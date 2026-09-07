@@ -115,6 +115,10 @@
       "types": "./src/state/filesystem.ts",
       "default": "./src/state/filesystem.ts"
     },
+    "./state/hive": {
+      "types": "./src/state/hive.ts",
+      "default": "./src/state/hive.ts"
+    },
     "./state/git": {
       "types": "./src/state/git.ts",
       "default": "./src/state/git.ts"
