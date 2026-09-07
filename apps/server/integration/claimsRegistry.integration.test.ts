@@ -6,12 +6,22 @@
 // writing a real ownership.json. Only the provider is faked, and only so the
 // turn is deterministic.
 //
-// Harness timing worth knowing: the test adapter runs `mutateWorkspace` after
-// it has emitted every event for the turn, including `turn.completed`. The
-// completion checkpoint is therefore captured before the edit lands on disk,
-// and the edit shows up in the *next* turn's diff. The upstream checkpoint test
-// works around this the same way, by asserting on the second checkpoint. This
-// is an artifact of the fake adapter, not of checkpointing.
+// Harness timing worth knowing, measured rather than assumed: a thread's
+// baseline checkpoint does not exist until its first turn runs — it is captured
+// during that turn, not at thread creation. The fake adapter applies
+// `mutateWorkspace` immediately after emitting its events, fast enough to land
+// before that baseline capture, so an edit made during turn 1 is absorbed into
+// the baseline and shows up in no diff at all. A diagnostic run confirmed the
+// baseline and the turn-1 checkpoint both already contained the edited content.
+//
+// From turn 2 onward the baseline is fixed, so edits appear normally. Hence
+// this test edits on two consecutive turns, which is also why the upstream
+// multi-turn checkpoint test asserts on its second checkpoint.
+//
+// This is an artifact of a fake provider that edits in microseconds; a real
+// agent takes long enough that the capture triggered at turn start wins. The
+// residual production risk is a narrow race for edits made in the first
+// moments of a thread's first turn.
 
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
