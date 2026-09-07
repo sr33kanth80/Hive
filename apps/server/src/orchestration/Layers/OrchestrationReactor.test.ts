@@ -14,6 +14,8 @@ import * as ThreadPullRequestReactor from "../ThreadPullRequestReactor.ts";
 import { OrchestrationReactor } from "../Services/OrchestrationReactor.ts";
 import { makeOrchestrationReactor } from "./OrchestrationReactor.ts";
 import * as AgentAwarenessRelay from "../../relay/AgentAwarenessRelay.ts";
+// HIVE
+import * as ClaimsReactor from "../ClaimsReactor.ts";
 
 describe("OrchestrationReactor", () => {
   let runtime: ManagedRuntime.ManagedRuntime<OrchestrationReactor, never> | null = null;
@@ -93,6 +95,16 @@ describe("OrchestrationReactor", () => {
             },
           }),
         ),
+        // HIVE
+        Layer.provideMerge(
+          Layer.succeed(ClaimsReactor.ClaimsReactor, {
+            start: () => {
+              started.push("claims-reactor");
+              return Effect.void;
+            },
+            drain: Effect.void,
+          }),
+        ),
       ),
     );
 
@@ -108,6 +120,7 @@ describe("OrchestrationReactor", () => {
       "thread-pull-request-reactor",
       "thread-settlement-reactor",
       "agent-awareness-relay",
+      "claims-reactor",
     ]);
 
     await Effect.runPromise(Scope.close(scope, Exit.void));

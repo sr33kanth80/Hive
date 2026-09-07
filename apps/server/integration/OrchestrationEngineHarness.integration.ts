@@ -68,6 +68,8 @@ import {
 import { ThreadDeletionReactor } from "../src/orchestration/Services/ThreadDeletionReactor.ts";
 import * as ThreadSettlementReactor from "../src/orchestration/ThreadSettlementReactor.ts";
 import * as ThreadPullRequestReactor from "../src/orchestration/ThreadPullRequestReactor.ts";
+// HIVE
+import * as ClaimsReactor from "../src/orchestration/ClaimsReactor.ts";
 import { OrchestrationReactor } from "../src/orchestration/Services/OrchestrationReactor.ts";
 import { ProjectionSnapshotQuery } from "../src/orchestration/Services/ProjectionSnapshotQuery.ts";
 import {
@@ -411,6 +413,13 @@ export const makeOrchestrationIntegrationHarness = (
         Layer.succeed(AgentAwarenessRelay.AgentAwarenessRelay, {
           publishThread: () => Effect.void,
           start: () => Effect.void,
+        }),
+      ),
+      // HIVE: stubbed like the other reactors this harness does not exercise.
+      Layer.provideMerge(
+        Layer.succeed(ClaimsReactor.ClaimsReactor, {
+          start: () => Effect.void,
+          drain: Effect.void,
         }),
       ),
     );

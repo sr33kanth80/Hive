@@ -12,6 +12,8 @@ import { ThreadDeletionReactor } from "../Services/ThreadDeletionReactor.ts";
 import * as ThreadSettlementReactor from "../ThreadSettlementReactor.ts";
 import * as ThreadPullRequestReactor from "../ThreadPullRequestReactor.ts";
 import * as AgentAwarenessRelay from "../../relay/AgentAwarenessRelay.ts";
+// HIVE: ownership registry derived from settled turns.
+import * as ClaimsReactor from "../ClaimsReactor.ts";
 
 export const makeOrchestrationReactor = Effect.gen(function* () {
   const providerRuntimeIngestion = yield* ProviderRuntimeIngestionService;
@@ -21,6 +23,8 @@ export const makeOrchestrationReactor = Effect.gen(function* () {
   const threadSettlementReactor = yield* ThreadSettlementReactor.ThreadSettlementReactor;
   const threadPullRequestReactor = yield* ThreadPullRequestReactor.ThreadPullRequestReactor;
   const agentAwarenessRelay = yield* AgentAwarenessRelay.AgentAwarenessRelay;
+  // HIVE
+  const claimsReactor = yield* ClaimsReactor.ClaimsReactor;
 
   const start: OrchestrationReactorShape["start"] = Effect.fn("start")(function* () {
     yield* providerRuntimeIngestion.start();
@@ -30,6 +34,8 @@ export const makeOrchestrationReactor = Effect.gen(function* () {
     yield* threadPullRequestReactor.start();
     yield* threadSettlementReactor.start();
     yield* agentAwarenessRelay.start();
+    // HIVE
+    yield* claimsReactor.start();
   });
 
   return {
