@@ -70,6 +70,7 @@ import * as ThreadSettlementReactor from "../src/orchestration/ThreadSettlementR
 import * as ThreadPullRequestReactor from "../src/orchestration/ThreadPullRequestReactor.ts";
 // HIVE
 import * as ClaimsReactor from "../src/orchestration/ClaimsReactor.ts";
+import { ownershipFilePath as claimsOwnershipFilePath } from "@t3tools/claims/store";
 import { OrchestrationReactor } from "../src/orchestration/Services/OrchestrationReactor.ts";
 import { ProjectionSnapshotQuery } from "../src/orchestration/Services/ProjectionSnapshotQuery.ts";
 import {
@@ -231,6 +232,10 @@ export interface OrchestrationIntegrationHarness {
   };
   readonly drainProviderRuntime: Effect.Effect<void>;
   readonly drainCheckpointReactor: Effect.Effect<void>;
+  // HIVE: the registry file this harness's server writes, and a drain so a test
+  // can wait on the claims reactor instead of sleeping.
+  readonly ownershipFilePath: string;
+  readonly drainClaimsReactor: Effect.Effect<void>;
   readonly dispose: Effect.Effect<void, never>;
 }
 
@@ -239,6 +244,9 @@ interface MakeOrchestrationIntegrationHarnessOptions {
   readonly realCodex?: boolean;
   /** Tracer for every fiber the harness runtime runs, including reactors. */
   readonly tracer?: Tracer.Tracer;
+  // HIVE: run the real claims reactor and registry instead of the stub, so a
+  // test can assert that a settled turn actually produces a claim.
+  readonly realClaimsReactor?: boolean;
 }
 
 export const makeOrchestrationIntegrationHarness = (
@@ -388,6 +396,17 @@ export const makeOrchestrationIntegrationHarness = (
       Layer.provideMerge(VcsProcess.layer),
     );
     const orchestrationReactorLayer = OrchestrationReactorLive.pipe(
+      // HIVE: stubbed like the other reactors this harness does not exercise,
+      // unless a test opts into the real one. This sits first in the chain so
+      // the layers merged below it satisfy its engine and service requirements.
+      Layer.provideMerge(
+        options?.realClaimsReactor === true
+          ? ClaimsReactor.layer.pipe(Layer.provideMerge(ClaimsReactor.claimsRegistryLayer))
+          : Layer.succeed(ClaimsReactor.ClaimsReactor, {
+              start: () => Effect.void,
+              drain: Effect.void,
+            }),
+      ),
       Layer.provideMerge(runtimeIngestionLayer),
       Layer.provideMerge(providerCommandReactorLayer),
       Layer.provideMerge(checkpointReactorLayer),
@@ -413,13 +432,6 @@ export const makeOrchestrationIntegrationHarness = (
         Layer.succeed(AgentAwarenessRelay.AgentAwarenessRelay, {
           publishThread: () => Effect.void,
           start: () => Effect.void,
-        }),
-      ),
-      // HIVE: stubbed like the other reactors this harness does not exercise.
-      Layer.provideMerge(
-        Layer.succeed(ClaimsReactor.ClaimsReactor, {
-          start: () => Effect.void,
-          drain: Effect.void,
         }),
       ),
     );
@@ -451,6 +463,11 @@ export const makeOrchestrationIntegrationHarness = (
     const checkpointReactor = yield* tryRuntimePromise("load CheckpointReactor service", () =>
       runtime.runPromise(Effect.service(CheckpointReactor)),
     ).pipe(Effect.orDie);
+    // HIVE
+    const claimsReactor = yield* tryRuntimePromise("load ClaimsReactor service", () =>
+      runtime.runPromise(Effect.service(ClaimsReactor.ClaimsReactor)),
+    ).pipe(Effect.orDie);
+    const ownershipFilePath = yield* claimsOwnershipFilePath(path.join(rootDir, "userdata"));
     const snapshotQuery = yield* tryRuntimePromise("load ProjectionSnapshotQuery service", () =>
       runtime.runPromise(Effect.service(ProjectionSnapshotQuery)),
     ).pipe(Effect.orDie);
@@ -617,6 +634,9 @@ export const makeOrchestrationIntegrationHarness = (
       waitForReceipt,
       drainProviderRuntime: providerRuntimeIngestion.drain,
       drainCheckpointReactor: checkpointReactor.drain,
+      // HIVE
+      ownershipFilePath,
+      drainClaimsReactor: claimsReactor.drain,
       dispose,
     } satisfies OrchestrationIntegrationHarness;
   });
