@@ -94,6 +94,8 @@ import {
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ThreadDeletionReactor } from "./orchestration/Services/ThreadDeletionReactor.ts";
+// HIVE
+import * as ConflictQuery from "./hive/ConflictQuery.ts";
 import {
   observeRpcEffect as instrumentRpcEffect,
   observeRpcStream as instrumentRpcStream,
@@ -478,6 +480,8 @@ const makeWsRpcLayer = (
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
       const threadDeletionReactor = yield* ThreadDeletionReactor;
+      // HIVE
+      const conflictQuery = yield* ConflictQuery.ConflictQuery;
       const analytics = yield* AnalyticsService.AnalyticsService;
       // Every command dispatched on this connection carries the connecting
       // client's origin, including server-generated bootstrap sub-commands:
@@ -1758,6 +1762,13 @@ const makeWsRpcLayer = (
               );
             }),
             { "rpc.aggregate": "orchestration" },
+          ),
+        // HIVE
+        [WS_METHODS.hiveConflictsList]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.hiveConflictsList,
+            conflictQuery.listForProject({ projectId: input.projectId }),
+            { "rpc.aggregate": "hive" },
           ),
         [WS_METHODS.serverProbe]: (_input) =>
           observeRpcEffect(WS_METHODS.serverProbe, Effect.succeed({}), {

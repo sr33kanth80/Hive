@@ -74,6 +74,8 @@ import * as ThreadSettlementReactor from "./orchestration/ThreadSettlementReacto
 import * as ThreadPullRequestReactor from "./orchestration/ThreadPullRequestReactor.ts";
 // HIVE: ownership registry + the reactor that derives it from settled turns.
 import * as ClaimsReactor from "./orchestration/ClaimsReactor.ts";
+import * as ConflictDetector from "./hive/ConflictDetector.ts";
+import * as ConflictQuery from "./hive/ConflictQuery.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import { ProviderRegistryLive } from "./provider/Layers/ProviderRegistry.ts";
@@ -286,6 +288,7 @@ const ReactorLayerLive = Layer.empty.pipe(
   Layer.provideMerge(AgentAwarenessRelay.layer.pipe(Layer.provide(ServerSecretStore.layer))),
   // HIVE
   Layer.provideMerge(ClaimsReactor.layer.pipe(Layer.provide(ClaimsReactor.claimsRegistryLayer))),
+  Layer.provideMerge(ConflictQuery.layer.pipe(Layer.provide(ConflictDetector.layer))),
   Layer.provideMerge(RuntimeReceiptBusLive),
 );
 

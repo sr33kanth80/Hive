@@ -12,6 +12,9 @@ import {
   ProviderSetupInput,
 } from "./providerSetup.ts";
 
+// HIVE
+import { HiveConflictsListInput, HiveConflictsListResult } from "./hive.ts";
+
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
 import {
   AuthAccessStreamError,
@@ -336,6 +339,9 @@ export const WS_METHODS = {
   serverGetUsageSummary: "server.getUsageSummary",
   serverRefreshUsageRates: "server.refreshUsageRates",
 
+  // HIVE
+  hiveConflictsList: "hive.conflicts.list",
+
   // Cloud environment methods
   cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
   cloudInstallRelayClient: "cloud.installRelayClient",
@@ -391,6 +397,13 @@ const WsServerRemoveKeybindingRpc = Rpc.make(WS_METHODS.serverRemoveKeybinding, 
   payload: ServerRemoveKeybindingInput,
   success: ServerRemoveKeybindingResult,
   error: Schema.Union([KeybindingsConfigError, EnvironmentAuthorizationError]),
+});
+
+// HIVE
+const WsHiveConflictsListRpc = Rpc.make(WS_METHODS.hiveConflictsList, {
+  payload: HiveConflictsListInput,
+  success: HiveConflictsListResult,
+  error: EnvironmentAuthorizationError,
 });
 
 const WsServerProbeRpc = Rpc.make(WS_METHODS.serverProbe, {
@@ -1182,6 +1195,8 @@ const WsSubscribeResourceTelemetryRpc = Rpc.make(WS_METHODS.subscribeResourceTel
 });
 
 export const WsRpcGroup = RpcGroup.make(
+  // HIVE
+  WsHiveConflictsListRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,
