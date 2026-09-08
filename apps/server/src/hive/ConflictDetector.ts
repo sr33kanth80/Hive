@@ -27,6 +27,14 @@ export interface ConflictCandidate {
   readonly branch: string;
 }
 
+export interface CheckpointCandidate {
+  readonly threadId: ThreadId;
+  /** The candidate thread's most recent checkpoint ref. */
+  readonly ref: string;
+  /** Shown in the result so the UI can still name a branch. */
+  readonly branch: string;
+}
+
 export interface ConflictPrediction {
   readonly threadId: ThreadId;
   readonly branch: string;
@@ -45,6 +53,21 @@ export class ConflictDetector extends Context.Service<
       readonly cwd: string;
       readonly branch: string;
       readonly candidates: ReadonlyArray<ConflictCandidate>;
+    }) => Effect.Effect<ReadonlyArray<ConflictPrediction>>;
+
+    /**
+     * Compare two threads by their checkpoint state rather than their branches.
+     *
+     * This is the path that matters in practice. Agent work lives in the
+     * worktree and in checkpoint refs; it never reaches the thread's branch
+     * unless someone commits, so merging branch tips compares two identical
+     * commits and finds nothing.
+     */
+    readonly predictFromCheckpoints: (input: {
+      readonly cwd: string;
+      readonly baseRef: string;
+      readonly ref: string;
+      readonly candidates: ReadonlyArray<CheckpointCandidate>;
     }) => Effect.Effect<ReadonlyArray<ConflictPrediction>>;
   }
 >()("t3/hive/ConflictDetector") {}
@@ -139,7 +162,139 @@ export const make = Effect.gen(function* () {
       );
     });
 
-  return { predict } satisfies ConflictDetector["Service"];
+  /**
+   * Checkpoint commits are written with `commit-tree` and no parent, so two of
+   * them share no history and `merge-tree` has no base to work from. Re-parent
+   * each one onto a common base commit first; the synthesized commits are loose
+   * objects that no ref points at, so git collects them in its own time.
+   */
+  const synthesizeCommit = Effect.fn("ConflictDetector.synthesizeCommit")(function* (input: {
+    readonly cwd: string;
+    readonly ref: string;
+    readonly parent: string;
+  }) {
+    const tree = yield* vcs.run({
+      operation: "hive.conflictDetector.revParseTree",
+      command: "git",
+      args: ["rev-parse", `${input.ref}^{tree}`],
+      cwd: input.cwd,
+      allowNonZeroExit: true,
+    });
+    if (tree.exitCode !== 0) return null;
+    const treeOid = tree.stdout.trim();
+    if (treeOid.length === 0) return null;
+
+    const commit = yield* vcs.run({
+      operation: "hive.conflictDetector.commitTree",
+      command: "git",
+      args: ["commit-tree", treeOid, "-p", input.parent, "-m", "hive conflict probe"],
+      cwd: input.cwd,
+      allowNonZeroExit: true,
+    });
+    if (commit.exitCode !== 0) return null;
+    const commitOid = commit.stdout.trim();
+    return commitOid.length === 0 ? null : commitOid;
+  });
+
+  /** Resolve a checkpoint ref to a parentless commit usable as a merge base. */
+  const resolveBaseCommit = Effect.fn("ConflictDetector.resolveBaseCommit")(function* (input: {
+    readonly cwd: string;
+    readonly ref: string;
+  }) {
+    const result = yield* vcs.run({
+      operation: "hive.conflictDetector.revParseCommit",
+      command: "git",
+      args: ["rev-parse", `${input.ref}^{commit}`],
+      cwd: input.cwd,
+      allowNonZeroExit: true,
+    });
+    if (result.exitCode !== 0) return null;
+    const oid = result.stdout.trim();
+    return oid.length === 0 ? null : oid;
+  });
+
+  const mergeCommits = Effect.fn("ConflictDetector.mergeCommits")(function* (input: {
+    readonly cwd: string;
+    readonly ours: string;
+    readonly theirs: string;
+  }) {
+    const result = yield* vcs.run({
+      operation: "hive.conflictDetector.mergeTreeCommits",
+      command: "git",
+      args: ["merge-tree", "--write-tree", "--name-only", input.ours, input.theirs],
+      cwd: input.cwd,
+      allowNonZeroExit: true,
+    });
+    if (result.exitCode === 0) return [];
+    if (result.exitCode !== 1) {
+      yield* Effect.logWarning("hive checkpoint conflict prediction unavailable", {
+        exitCode: result.exitCode,
+        detail: result.stderr.slice(0, 200),
+      });
+      return null;
+    }
+    return parseConflictedPaths(result.stdout);
+  });
+
+  const predictFromCheckpoints: ConflictDetector["Service"]["predictFromCheckpoints"] = (input) =>
+    Effect.gen(function* () {
+      const candidates = input.candidates.filter((candidate) => candidate.ref !== input.ref);
+      if (candidates.length === 0) return [];
+
+      const base = yield* resolveBaseCommit({ cwd: input.cwd, ref: input.baseRef });
+      if (base === null) {
+        yield* Effect.logWarning("hive conflict base checkpoint unresolvable", {
+          baseRef: input.baseRef,
+        });
+        return [];
+      }
+
+      const ours = yield* synthesizeCommit({ cwd: input.cwd, ref: input.ref, parent: base });
+      if (ours === null) return [];
+
+      const predictions = yield* Effect.forEach(
+        candidates,
+        (candidate) =>
+          Effect.gen(function* () {
+            const theirs = yield* synthesizeCommit({
+              cwd: input.cwd,
+              ref: candidate.ref,
+              parent: base,
+            });
+            if (theirs === null) return null;
+            const files = yield* mergeCommits({ cwd: input.cwd, ours, theirs });
+            if (files === null || files.length === 0) return null;
+            return {
+              threadId: candidate.threadId,
+              branch: candidate.branch,
+              files,
+            } satisfies ConflictPrediction;
+          }).pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("hive checkpoint conflict prediction failed", {
+                candidateRef: candidate.ref,
+                cause: String(cause),
+              }).pipe(Effect.as(null)),
+            ),
+          ),
+        { concurrency: 4 },
+      );
+
+      return predictions.filter(
+        (prediction): prediction is ConflictPrediction => prediction !== null,
+      );
+    }).pipe(
+      // Resolving the base or our own checkpoint can fail too. A prediction we
+      // cannot make is reported as no conflict, never as a conflict.
+      Effect.catchCause((cause) =>
+        Effect.logWarning("hive checkpoint conflict prediction aborted", {
+          ref: input.ref,
+          cause: String(cause),
+        }).pipe(Effect.as([] as ReadonlyArray<ConflictPrediction>)),
+      ),
+    );
+
+  return { predict, predictFromCheckpoints } satisfies ConflictDetector["Service"];
 });
 
 export const layer = Layer.effect(ConflictDetector, make);

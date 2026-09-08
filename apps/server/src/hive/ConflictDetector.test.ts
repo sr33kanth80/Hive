@@ -240,3 +240,119 @@ describe("ConflictDetector", () => {
     ),
   );
 });
+
+/**
+ * Reproduce how T3 Code stores a thread's work: a tree captured with
+ * `commit-tree` and no parent, stored under a hidden ref. The thread's branch
+ * never advances, which is exactly why comparing branches finds nothing.
+ */
+function captureCheckpoint(cwd: string, ref: string, edits: ReadonlyMap<number, string>): void {
+  write(cwd, "shared.txt", sharedWith(edits));
+  runGit(cwd, ["add", "-A", "--", "."]);
+  const tree = runGit(cwd, ["write-tree"]).trim();
+  const commit = runGit(cwd, ["commit-tree", tree, "-m", `checkpoint ${ref}`]).trim();
+  runGit(cwd, ["update-ref", ref, commit]);
+  // Leave the working tree as it was, mirroring a capture that does not commit.
+  runGit(cwd, ["reset", "-q", "HEAD", "--", "."]);
+}
+
+describe("ConflictDetector.predictFromCheckpoints", () => {
+  it.effect("finds the conflict that comparing branches would miss", () =>
+    runWith(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "hive-checkpoint-test-" });
+        seedRepo(cwd);
+        runGit(cwd, ["checkout", "-q", "main"]);
+
+        const baseRef = "refs/t3/checkpoints/base/turn/0";
+        captureCheckpoint(cwd, baseRef, new Map());
+        // Two threads edit the same region, each captured to its own ref.
+        captureCheckpoint(cwd, "refs/t3/checkpoints/a/turn/1", new Map([[3, "EDITED BY A"]]));
+        captureCheckpoint(cwd, "refs/t3/checkpoints/b/turn/1", new Map([[3, "EDITED BY B"]]));
+
+        const detector = yield* ConflictDetector;
+
+        // The branches never moved, so the branch-based path sees nothing.
+        const viaBranches = yield* detector.predict({
+          cwd,
+          branch: "main",
+          candidates: [{ threadId: thread("thread-b"), branch: "main" }],
+        });
+        assert.deepStrictEqual(viaBranches, []);
+
+        const viaCheckpoints = yield* detector.predictFromCheckpoints({
+          cwd,
+          baseRef,
+          ref: "refs/t3/checkpoints/a/turn/1",
+          candidates: [
+            {
+              threadId: thread("thread-b"),
+              ref: "refs/t3/checkpoints/b/turn/1",
+              branch: "hive/b",
+            },
+          ],
+        });
+        assert.strictEqual(viaCheckpoints.length, 1);
+        assert.deepStrictEqual(viaCheckpoints[0]?.files, ["shared.txt"]);
+      }),
+    ),
+  );
+
+  it.effect("stays silent when the checkpoints edit separate regions", () =>
+    runWith(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "hive-checkpoint-test-" });
+        seedRepo(cwd);
+        runGit(cwd, ["checkout", "-q", "main"]);
+
+        const baseRef = "refs/t3/checkpoints/base/turn/0";
+        captureCheckpoint(cwd, baseRef, new Map());
+        captureCheckpoint(cwd, "refs/t3/checkpoints/a/turn/1", new Map([[3, "EDITED BY A"]]));
+        captureCheckpoint(cwd, "refs/t3/checkpoints/b/turn/1", new Map([[35, "FAR AWAY"]]));
+
+        const detector = yield* ConflictDetector;
+        const predictions = yield* detector.predictFromCheckpoints({
+          cwd,
+          baseRef,
+          ref: "refs/t3/checkpoints/a/turn/1",
+          candidates: [
+            {
+              threadId: thread("thread-b"),
+              ref: "refs/t3/checkpoints/b/turn/1",
+              branch: "hive/b",
+            },
+          ],
+        });
+        assert.deepStrictEqual(predictions, []);
+      }),
+    ),
+  );
+
+  it.effect("omits a candidate whose checkpoint ref does not resolve", () =>
+    runWith(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "hive-checkpoint-test-" });
+        seedRepo(cwd);
+        runGit(cwd, ["checkout", "-q", "main"]);
+
+        const baseRef = "refs/t3/checkpoints/base/turn/0";
+        captureCheckpoint(cwd, baseRef, new Map());
+        captureCheckpoint(cwd, "refs/t3/checkpoints/a/turn/1", new Map([[3, "EDITED BY A"]]));
+
+        const detector = yield* ConflictDetector;
+        const predictions = yield* detector.predictFromCheckpoints({
+          cwd,
+          baseRef,
+          ref: "refs/t3/checkpoints/a/turn/1",
+          candidates: [
+            { threadId: thread("ghost"), ref: "refs/t3/checkpoints/missing/turn/9", branch: "x" },
+          ],
+        });
+        assert.deepStrictEqual(predictions, []);
+      }),
+    ),
+  );
+});
