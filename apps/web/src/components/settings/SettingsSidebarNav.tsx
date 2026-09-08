@@ -15,6 +15,7 @@ import {
   BlocksIcon,
   BotIcon,
   GitBranchIcon,
+  GitMergeIcon,
   PanelsTopLeftIcon,
   KeyboardIcon,
   Link2Icon,
@@ -78,6 +79,8 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/providers": BotIcon,
   "/settings/integrations": BlocksIcon,
   "/settings/source-control": GitBranchIcon,
+  // HIVE
+  "/settings/hive": GitMergeIcon,
   "/settings/connections": Link2Icon,
   "/settings/archived": ArchiveIcon,
 };

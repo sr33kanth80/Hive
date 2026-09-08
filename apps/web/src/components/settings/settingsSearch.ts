@@ -9,6 +9,7 @@ export type SettingsPath =
   | "/settings/providers"
   | "/settings/integrations"
   | "/settings/source-control"
+  | "/settings/hive"
   | "/settings/connections"
   | "/settings/archived";
 
@@ -55,6 +56,8 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/providers": "Providers",
   "/settings/integrations": "Integrations",
   "/settings/source-control": "Source Control",
+  // HIVE
+  "/settings/hive": "Merge conflicts",
   "/settings/connections": "Connections",
   "/settings/archived": "Archive",
 };

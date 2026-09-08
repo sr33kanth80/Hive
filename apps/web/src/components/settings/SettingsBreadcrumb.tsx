@@ -8,8 +8,6 @@ import { SETTINGS_SECTION_LABELS } from "./settingsSearch";
 const SETTINGS_BREADCRUMB_LABELS: Readonly<Record<string, string>> = {
   ...SETTINGS_SECTION_LABELS,
   "/settings/diagnostics": "Diagnostics",
-  // HIVE
-  "/settings/hive": "Merge conflicts",
 };
 
 function settingsBreadcrumbLabel(pathname: string): string | null {
