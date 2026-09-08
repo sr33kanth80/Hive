@@ -96,6 +96,7 @@ import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSna
 import { ThreadDeletionReactor } from "./orchestration/Services/ThreadDeletionReactor.ts";
 // HIVE
 import * as ConflictQuery from "./hive/ConflictQuery.ts";
+import * as SwarmService from "./hive/SwarmService.ts";
 import {
   observeRpcEffect as instrumentRpcEffect,
   observeRpcStream as instrumentRpcStream,
@@ -482,6 +483,7 @@ const makeWsRpcLayer = (
       const threadDeletionReactor = yield* ThreadDeletionReactor;
       // HIVE
       const conflictQuery = yield* ConflictQuery.ConflictQuery;
+      const swarmService = yield* SwarmService.SwarmService;
       const analytics = yield* AnalyticsService.AnalyticsService;
       // Every command dispatched on this connection carries the connecting
       // client's origin, including server-generated bootstrap sub-commands:
@@ -1768,6 +1770,16 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             WS_METHODS.hiveConflictsList,
             conflictQuery.listForProject({ projectId: input.projectId }),
+            { "rpc.aggregate": "hive" },
+          ),
+        [WS_METHODS.hiveSwarmsCreate]: (input) =>
+          observeRpcEffect(WS_METHODS.hiveSwarmsCreate, swarmService.create(input), {
+            "rpc.aggregate": "hive",
+          }),
+        [WS_METHODS.hiveSwarmsList]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.hiveSwarmsList,
+            swarmService.listForProject({ projectId: input.projectId }),
             { "rpc.aggregate": "hive" },
           ),
         [WS_METHODS.serverProbe]: (_input) =>

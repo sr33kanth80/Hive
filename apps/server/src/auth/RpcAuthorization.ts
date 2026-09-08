@@ -31,6 +31,9 @@ export const RPC_REQUIRED_SCOPES = {
   [ORCHESTRATION_WS_METHODS.subscribeThread]: AuthOrchestrationReadScope,
   // HIVE: read-only prediction over threads the caller can already see.
   [WS_METHODS.hiveConflictsList]: AuthOrchestrationReadScope,
+  // Listing is read-only; creating a swarm starts agents, so it needs operate.
+  [WS_METHODS.hiveSwarmsList]: AuthOrchestrationReadScope,
+  [WS_METHODS.hiveSwarmsCreate]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverProbe]: AuthOrchestrationReadScope,
   [WS_METHODS.serverGetConfig]: AuthOrchestrationReadScope,
   [WS_METHODS.serverRefreshProviders]: AuthOrchestrationOperateScope,

@@ -13,7 +13,15 @@ import {
 } from "./providerSetup.ts";
 
 // HIVE
-import { HiveConflictsListInput, HiveConflictsListResult } from "./hive.ts";
+import {
+  HiveConflictsListInput,
+  HiveConflictsListResult,
+  HiveSwarmCreateInput,
+  HiveSwarmCreateResult,
+  HiveSwarmPlanInvalidError,
+  HiveSwarmsListInput,
+  HiveSwarmsListResult,
+} from "./hive.ts";
 
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
 import {
@@ -341,6 +349,8 @@ export const WS_METHODS = {
 
   // HIVE
   hiveConflictsList: "hive.conflicts.list",
+  hiveSwarmsCreate: "hive.swarms.create",
+  hiveSwarmsList: "hive.swarms.list",
 
   // Cloud environment methods
   cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
@@ -403,6 +413,18 @@ const WsServerRemoveKeybindingRpc = Rpc.make(WS_METHODS.serverRemoveKeybinding, 
 const WsHiveConflictsListRpc = Rpc.make(WS_METHODS.hiveConflictsList, {
   payload: HiveConflictsListInput,
   success: HiveConflictsListResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsHiveSwarmsCreateRpc = Rpc.make(WS_METHODS.hiveSwarmsCreate, {
+  payload: HiveSwarmCreateInput,
+  success: HiveSwarmCreateResult,
+  error: Schema.Union([HiveSwarmPlanInvalidError, EnvironmentAuthorizationError]),
+});
+
+const WsHiveSwarmsListRpc = Rpc.make(WS_METHODS.hiveSwarmsList, {
+  payload: HiveSwarmsListInput,
+  success: HiveSwarmsListResult,
   error: EnvironmentAuthorizationError,
 });
 
@@ -1197,6 +1219,8 @@ const WsSubscribeResourceTelemetryRpc = Rpc.make(WS_METHODS.subscribeResourceTel
 export const WsRpcGroup = RpcGroup.make(
   // HIVE
   WsHiveConflictsListRpc,
+  WsHiveSwarmsCreateRpc,
+  WsHiveSwarmsListRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,

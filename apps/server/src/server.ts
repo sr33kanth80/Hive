@@ -78,6 +78,7 @@ import * as ConflictDetector from "./hive/ConflictDetector.ts";
 import * as ConflictQuery from "./hive/ConflictQuery.ts";
 import { ProjectionCheckpointRepositoryLive } from "./persistence/Layers/ProjectionCheckpoints.ts";
 import * as SwarmExecutor from "./hive/SwarmExecutor.ts";
+import * as SwarmService from "./hive/SwarmService.ts";
 import * as SwarmReactor from "./hive/SwarmReactor.ts";
 import * as SwarmRegistryLayer from "./hive/SwarmRegistryLayer.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
@@ -292,9 +293,12 @@ const ReactorLayerLive = Layer.empty.pipe(
   Layer.provideMerge(AgentAwarenessRelay.layer.pipe(Layer.provide(ServerSecretStore.layer))),
   // HIVE
   Layer.provideMerge(ClaimsReactor.layer.pipe(Layer.provide(ClaimsReactor.claimsRegistryLayer))),
+  // One graph so the registry and executor are shared by the reactor and the
+  // RPC service, and so neither leaks as a requirement into every layer that
+  // builds the server.
   Layer.provideMerge(
-    SwarmReactor.layer.pipe(
-      Layer.provide(SwarmExecutor.layer),
+    Layer.mergeAll(SwarmReactor.layer, SwarmService.layer).pipe(
+      Layer.provideMerge(SwarmExecutor.layer),
       Layer.provideMerge(SwarmRegistryLayer.layer),
     ),
   ),

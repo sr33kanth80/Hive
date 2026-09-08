@@ -119,6 +119,7 @@ import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSna
 import { ThreadDeletionReactor } from "./orchestration/Services/ThreadDeletionReactor.ts";
 // HIVE
 import * as ConflictQuery from "./hive/ConflictQuery.ts";
+import * as SwarmService from "./hive/SwarmService.ts";
 import { SqlitePersistenceMemory } from "./persistence/Layers/Sqlite.ts";
 import { OrchestrationEventStoreLive } from "./persistence/Layers/OrchestrationEventStore.ts";
 import { OrchestrationEventStore } from "./persistence/Services/OrchestrationEventStore.ts";
@@ -958,9 +959,12 @@ const buildAppUnderTest = (options?: {
             drainThrough: () => Effect.void,
             ...options?.layers?.threadDeletionReactor,
           }),
-          // HIVE: these tests exercise routing, not conflict prediction.
+          // HIVE: these tests exercise routing, not conflict prediction or swarms.
           Layer.mock(ConflictQuery.ConflictQuery)({
             listForProject: () => Effect.succeed({ conflicts: [], skippedThreadIds: [] }),
+          }),
+          Layer.mock(SwarmService.SwarmService)({
+            listForProject: () => Effect.succeed({ swarms: [] }),
           }),
         ),
       ),
