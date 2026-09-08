@@ -73,6 +73,38 @@ export interface ThreadTitleGenerationResult {
   title: string;
 }
 
+export interface SwarmPlanGenerationInput {
+  cwd: string;
+  /** The developer's prompt, verbatim. */
+  message: string;
+  modelSelection: ModelSelection;
+}
+
+export interface SwarmPlanGenerationTask {
+  id: string;
+  title: string;
+  dependsOn: ReadonlyArray<string>;
+}
+
+export interface SwarmPlanGenerationResult {
+  /**
+   * A single task means "this work does not split", which is a legitimate and
+   * common answer. Splitting work that has to agree with itself is worse than
+   * running it serially, so the planner is expected to say so rather than
+   * invent parallelism.
+   */
+  tasks: ReadonlyArray<SwarmPlanGenerationTask>;
+}
+
+/**
+ * Providers that cannot plan return the prompt unchanged as one task. Swarm
+ * mode then behaves exactly like a normal thread rather than failing, which is
+ * the honest answer for a driver with no structured-output support.
+ */
+export function singleTaskSwarmPlan(message: string): SwarmPlanGenerationResult {
+  return { tasks: [{ id: "1", title: message, dependsOn: [] }] };
+}
+
 /**
  * TextGeneration - Service tag for commit and change request text generation.
  */
@@ -104,6 +136,13 @@ export class TextGeneration extends Context.Service<
     readonly generateThreadTitle: (
       input: ThreadTitleGenerationInput,
     ) => Effect.Effect<ThreadTitleGenerationResult, TextGenerationError>;
+    /**
+     * Break a prompt into tasks that can run as parallel agents. Drivers that
+     * cannot produce structured output return the prompt as a single task.
+     */
+    readonly generateSwarmPlan: (
+      input: SwarmPlanGenerationInput,
+    ) => Effect.Effect<SwarmPlanGenerationResult, TextGenerationError>;
   }
 >()("t3/textGeneration/TextGeneration") {}
 
@@ -111,7 +150,8 @@ type TextGenerationOp =
   | "generateCommitMessage"
   | "generatePrContent"
   | "generateBranchName"
-  | "generateThreadTitle";
+  | "generateThreadTitle"
+  | "generateSwarmPlan";
 
 const resolveInstance = (
   registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
@@ -150,6 +190,10 @@ export const makeTextGenerationFromRegistry = (
     generateThreadTitle: (input) =>
       resolveInstance(registry, "generateThreadTitle", input.modelSelection.instanceId).pipe(
         Effect.flatMap((textGeneration) => textGeneration.generateThreadTitle(input)),
+      ),
+    generateSwarmPlan: (input) =>
+      resolveInstance(registry, "generateSwarmPlan", input.modelSelection.instanceId).pipe(
+        Effect.flatMap((textGeneration) => textGeneration.generateSwarmPlan(input)),
       ),
   });
 

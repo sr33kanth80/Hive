@@ -266,5 +266,9 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    // HIVE: this driver has no structured-output path, so swarm mode runs the
+    // prompt as a single task rather than guessing at a split.
+    generateSwarmPlan: (input: TextGeneration.SwarmPlanGenerationInput) =>
+      Effect.succeed(TextGeneration.singleTaskSwarmPlan(input.message)),
   } satisfies TextGeneration.TextGeneration["Service"];
 });

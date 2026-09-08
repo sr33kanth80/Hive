@@ -21,6 +21,8 @@ import { applyAntigravityAcpModelSelection } from "../provider/acp/AntigravityAc
 import { removeAntigravitySessionFiles } from "../provider/acp/AntigravitySessionFiles.ts";
 import type { AcpSessionRuntime } from "../provider/acp/AcpSessionRuntime.ts";
 import type * as TextGeneration from "./TextGeneration.ts";
+// HIVE: value import for the shared single-task fallback.
+import { singleTaskSwarmPlan } from "./TextGeneration.ts";
 import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
@@ -406,5 +408,9 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    // HIVE: this driver has no structured-output path, so swarm mode runs the
+    // prompt as a single task rather than guessing at a split.
+    generateSwarmPlan: (input: TextGeneration.SwarmPlanGenerationInput) =>
+      Effect.succeed(singleTaskSwarmPlan(input.message)),
   } satisfies TextGeneration.TextGeneration["Service"];
 });

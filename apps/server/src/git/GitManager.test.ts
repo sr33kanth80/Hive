@@ -304,6 +304,8 @@ function createTextGeneration(
       Effect.succeed({
         title: "Update workflow",
       }),
+    // HIVE: git tests do not plan swarms; one task means "do not split".
+    generateSwarmPlan: (input) => Effect.succeed(TextGeneration.singleTaskSwarmPlan(input.message)),
     ...overrides,
   };
 
@@ -341,6 +343,7 @@ function createTextGeneration(
             }),
         ),
       ),
+    generateSwarmPlan: (input) => implementation.generateSwarmPlan(input),
     generateThreadTitle: (input) =>
       implementation.generateThreadTitle(input).pipe(
         Effect.mapError(

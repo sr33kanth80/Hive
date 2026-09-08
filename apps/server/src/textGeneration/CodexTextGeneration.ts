@@ -101,7 +101,8 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle",
+      | "generateThreadTitle"
+      | "generateSwarmPlan",
     value: unknown,
   ): Effect.Effect<string, TextGenerationError> =>
     encodeJsonString(value).pipe(
@@ -120,7 +121,8 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle",
+      | "generateThreadTitle"
+      | "generateSwarmPlan",
     attachments: TextGeneration.BranchNameGenerationInput["attachments"],
   ): Effect.fn.Return<MaterializedImageAttachments, TextGenerationError> {
     if (!attachments || attachments.length === 0) {
@@ -162,7 +164,8 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateSwarmPlan";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -405,10 +408,68 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       } satisfies TextGeneration.ThreadTitleGenerationResult;
     });
 
+  /**
+   * Swarm planning. The prompt is deliberately biased against splitting: work
+   * whose pieces must agree with each other is faster done serially than by
+   * several agents each inventing their own version of the shared part. One
+   * task back is a correct and common answer.
+   */
+  const generateSwarmPlan: TextGeneration.TextGeneration["Service"]["generateSwarmPlan"] =
+    Effect.fn("CodexTextGeneration.generateSwarmPlan")(function* (input) {
+      const outputSchema = Schema.Struct({
+        tasks: Schema.Array(
+          Schema.Struct({
+            id: Schema.String,
+            title: Schema.String,
+            dependsOn: Schema.Array(Schema.String),
+          }),
+        ),
+      });
+
+      const prompt = [
+        "You are planning work for a team of coding agents on one repository.",
+        "Split the request below ONLY if the pieces are genuinely independent —",
+        "different files, no shared interface to agree on. If the work is one",
+        "coherent change, or the parts must agree with each other, return a",
+        "single task containing the original request. Splitting badly is worse",
+        "than not splitting: separate agents cannot see each other's work.",
+        "",
+        "Use short numeric ids ('1', '2', ...). dependsOn lists ids that must",
+        "finish first; use it for ordering, and leave it empty for work that can",
+        "start immediately. Each title must be a complete, self-contained",
+        "instruction, because the agent running it sees nothing else.",
+        "Never invent work that was not asked for.",
+        "",
+        "Request:",
+        input.message,
+      ].join("\n");
+
+      const generated = yield* runCodexJson({
+        operation: "generateSwarmPlan",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+
+      const tasks = generated.tasks
+        .filter((task) => task.title.trim().length > 0)
+        .map((task) => ({
+          id: task.id.trim(),
+          title: task.title.trim(),
+          dependsOn: task.dependsOn.map((value) => value.trim()).filter((v) => v.length > 0),
+        }));
+
+      // An empty or unusable plan falls back to running the prompt as one task
+      // rather than silently doing nothing.
+      return tasks.length === 0 ? TextGeneration.singleTaskSwarmPlan(input.message) : { tasks };
+    });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateSwarmPlan,
   } satisfies TextGeneration.TextGeneration["Service"];
 });
