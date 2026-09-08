@@ -1,121 +1,143 @@
-# T3 Code
+# Hive
 
-T3 Code is an "agent harness control surface". It enables control of the agents on your machine with a best-in-class mobile app ([iOS](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824), [Android](https://play.google.com/store/apps/details?id=com.t3tools.t3code)), [web app](https://app.t3.codes) and [Electron-based desktop app](https://t3.codes).
+Hive is a coordination layer for coding agents. It tells you when two agents
+working in parallel are about to collide — before you find out at merge time.
 
-Works with your subscriptions on Claude Code, Codex, Cursor, Grok Build, OpenCode, and Google Antigravity. If they're set up on your computer, T3 Code can control them.
+## The problem
 
-## "Wait, what are you selling me?"
+Coding agents are good at the work. What they cannot do is see each other.
 
-Nothing. We built T3 Code because we wanted the best possible development experience with agents. We were inspired by existing solutions like the Codex desktop app, Conductor, Claude Desktop and Cursor Glass, but none met our bar.
+Run three agents on one repository and each one plans as if it were alone. They
+pick the same files, reshape the same functions, and invent the same helper
+three different ways. Nothing goes wrong until you try to bring the branches
+together, and by then the cost is yours to pay.
 
-We wanted something performant, remote-ready, and truly open. If we ever go the wrong direction, we want you to have everything you need to fork and build the editor that you want.
+Hive watches the branches your agents are building and answers one question
+continuously: **will these merge?**
 
-## Installation
+## What Hive does today
 
-> [!WARNING]
-> T3 Code currently supports Codex, Claude, Cursor, Grok Build, OpenCode, and Antigravity. Install and authenticate at least one provider before use:
->
-> - Codex: install [Codex CLI](https://developers.openai.com/codex/cli) and run `codex login`
-> - Claude: install [Claude Code](https://claude.com/product/claude-code) and run `claude auth login`
-> - Cursor: install [Cursor CLI](https://cursor.com/cli) and run `agent login`
-> - Grok Build: install [Grok Build CLI](https://x.ai/cli) and run `grok login`
-> - OpenCode: install [OpenCode](https://opencode.ai) and run `opencode auth login`
-> - Antigravity: enable it in Settings, then use **Install Antigravity** and **Sign in with Google**. No CLI is required.
+**Predicts real merge conflicts.** For every pair of threads in a project, Hive
+performs the merge in memory with `git merge-tree` — touching neither your
+working tree nor your index — and reports the files that genuinely conflict.
 
-### Try it out (install-free)
+This matters more than it sounds. The obvious approach is to compare the file
+paths each agent touched and warn on overlap, but two agents editing different
+parts of the same file merge cleanly, so overlap warns constantly about nothing.
+A warning surface people learn to dismiss is worse than no warning at all.
+Every row Hive shows is a conflict git itself would raise.
 
-The easiest way to test T3 Code is to run the server in your terminal (requires Node.js 22.16+, 23.11+, or 24.10+):
+**Keeps an ownership registry.** Each settled turn contributes the files that
+thread's branch has touched, derived from the checkpoint diffs the server
+already computes. Because it comes from git rather than from parsing agent
+output, it works the same across every provider.
 
-```bash
-npx t3@latest
+**Says when it does not know.** A thread with no branch yet cannot be merged
+against anything, so Hive reports it as unchecked rather than dropping it.
+"Nothing collides" and "some threads were not checked" are different answers,
+and conflating them is how a tool starts lying to you.
+
+## Status
+
+Early, and honest about it.
+
+The conflict engine is verified at the mechanism level: a real turn, through
+real checkpointing, produces a claim naming the file that changed, and the
+detector correctly separates genuine conflicts from two branches editing the
+same file cleanly.
+
+What has **not** happened yet is validation against real concurrent agent runs.
+Nobody has watched Hive call a conflict on work they actually cared about. The
+false-positive rate is unmeasured — note that `git merge-tree` is stricter than
+"do the changed line ranges intersect", so edits on adjacent lines count as
+conflicts.
+
+Also true, so you are not surprised:
+
+- The ownership registry is populated but nothing reads it yet. Conflicts are
+  answered from branches. Claims are there for ranking and explanation later.
+- The conflicts page lives at `/settings/hive` and is not in the settings
+  navigation. Conflicts are operational rather than configuration, and where
+  this belongs is still an open question.
+- Swarm execution, cross-machine multiplayer, shared memory, and a push
+  approval gate are **not built**. They are the direction, not the present.
+
+## Requirements
+
+**Threads must run in worktree mode.** Hive compares branches. In `local`
+checkout mode every thread shares one checkout on one branch, so there are no
+branches to compare and Hive will honestly report that it checked nothing.
+
+Set it per repository in `t3.json`:
+
+```json
+{ "defaultThreadEnvMode": "worktree" }
 ```
 
-This will launch T3 Code's backend on your machine as well as the local web app to control your agents.
+A per-project setting in the app overrides the file, and the composer footer
+tells you which mode a thread is actually using.
 
-Tip: Use `npx t3@latest --help` for the full CLI reference.
+You also need at least one agent provider installed and authenticated — Claude
+Code, Codex, Cursor, Grok, OpenCode, or Antigravity.
 
-### Desktop app
+## Running it
 
-Install the latest version of the desktop app from [GitHub Releases](https://github.com/pingdotgg/t3code/releases), or from your favorite package registry:
-
-#### Windows (`winget`)
-
-```bash
-winget install T3Tools.T3Code
-```
-
-#### macOS (Homebrew)
+Node 24.13+ and [Vite+](https://viteplus.dev/guide/):
 
 ```bash
-brew install --cask t3-code
+curl -fsSL https://vite.plus | bash    # macOS / Linux
 ```
-
-#### Arch Linux (AUR)
-
-Stable:
 
 ```bash
-yay -S t3code-bin
+irm https://vite.plus/ps1 | iex        # Windows
 ```
 
-Nightly:
-
-```bash
-yay -S t3code-nightly-bin
-```
-
-The AUR packaging is maintained in this repository under [`packaging/aur`](./packaging/aur).
-
-## Some notes
-
-We are very very early in this project. Expect bugs.
-
-We are (mostly) not accepting contributions yet. Small fixes may be considered. Big features will not be.
-
-## Documentation
-
-Full docs live in [docs/](./docs). There's no docs site yet.
-
-- [Install and first run](./docs/user/install.md)
-- [Permission modes](./docs/user/permission-modes.md)
-- [Keyboard shortcuts](./docs/user/keybindings.md)
-- [Project settings](./docs/user/project-settings.md)
-- [Remote access from a phone or another machine](./docs/user/remote-access.md)
-- [Keeping app and server in sync](./docs/user/updating.md)
-- [Source control integrations](./docs/user/source-control.md)
-- Multiple accounts: [Codex](./docs/user/providers-codex.md) · [Claude](./docs/user/providers-claude.md)
-- [Run T3 Code as a background service](./docs/user/background-service.md)
-
-Building from source? Start at [docs/internals/overview.md](./docs/internals/overview.md).
-
-## If you REALLY want to contribute still.... read this first
-
-### Install `vp`
-
-T3 Code uses Vite+ so you'll need to install the global `vp` command-line tool.
-
-#### macOS / Linux
-
-```bash
-curl -fsSL https://vite.plus | bash
-```
-
-#### Windows
-
-```bash
-irm https://vite.plus/ps1 | iex
-```
-
-Checkout their getting started guide for more information: https://viteplus.dev/guide/
-
-### Install dependencies
+Then:
 
 ```bash
 vp i
+pnpm dev            # server + web client
+pnpm dev:desktop    # Electron app
 ```
 
-Read [CONTRIBUTING.md](./CONTRIBUTING.md) before reporting a bug or opening a PR.
+Open the pairing URL the server prints. The conflicts page is at
+`/settings/hive`.
 
-Have a feature request? Start an [Ideas discussion](https://github.com/pingdotgg/t3code/discussions/categories/ideas).
+## How it works
 
-Need support? Join the [Discord](https://discord.gg/jn4EGJjrvv).
+The server is event sourced. Commands produce events, a pure decider turns one
+into the other, and side effects run in queue-backed reactors. Hive follows that
+grain rather than fighting it:
+
+- `packages/claims` — the ownership registry: schema, an atomically written
+  store, and the registry service.
+- `apps/server/src/orchestration/ClaimsReactor.ts` — subscribes to settled
+  turns and folds their git-derived file lists into claims. A reactor, not a
+  hook in the decider or projector, because both of those are pure.
+- `apps/server/src/hive/` — the conflict detector and the query that pairs up a
+  project's threads.
+- `apps/web/src/components/hive/` — the conflicts panel.
+
+Hive's code is deliberately additive: new packages and new files, plus a small
+number of registration lines in the host application, each marked `// HIVE`.
+
+## Built on T3 Code
+
+Hive is built on top of [T3 Code](https://github.com/pingdotgg/t3code), an
+open-source control surface for coding agents by T3 Tools. T3 Code provides
+everything underneath the coordination layer — the agent adapters, git worktree
+workspaces, durable threads, checkpointing, and the web, desktop, and mobile
+clients.
+
+That foundation is why Hive is small. Conflict prediction reads the checkpoint
+diffs T3 Code already computes; it did not have to build agent orchestration to
+get there.
+
+T3 Code is MIT licensed, © T3 Tools Inc. Its `LICENSE` is preserved unchanged in
+this repository. For anything about the underlying platform — providers, remote
+access, keybindings, source control — see [docs/](./docs) and
+[docs/internals/overview.md](./docs/internals/overview.md).
+
+## License
+
+MIT. Hive's additions are MIT; portions © T3 Code contributors.
