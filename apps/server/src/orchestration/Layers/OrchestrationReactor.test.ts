@@ -16,6 +16,7 @@ import { makeOrchestrationReactor } from "./OrchestrationReactor.ts";
 import * as AgentAwarenessRelay from "../../relay/AgentAwarenessRelay.ts";
 // HIVE
 import * as ClaimsReactor from "../ClaimsReactor.ts";
+import * as SwarmReactor from "../../hive/SwarmReactor.ts";
 
 describe("OrchestrationReactor", () => {
   let runtime: ManagedRuntime.ManagedRuntime<OrchestrationReactor, never> | null = null;
@@ -105,6 +106,15 @@ describe("OrchestrationReactor", () => {
             drain: Effect.void,
           }),
         ),
+        Layer.provideMerge(
+          Layer.succeed(SwarmReactor.SwarmReactor, {
+            start: () => {
+              started.push("swarm-reactor");
+              return Effect.void;
+            },
+            drain: Effect.void,
+          }),
+        ),
       ),
     );
 
@@ -121,6 +131,7 @@ describe("OrchestrationReactor", () => {
       "thread-settlement-reactor",
       "agent-awareness-relay",
       "claims-reactor",
+      "swarm-reactor",
     ]);
 
     await Effect.runPromise(Scope.close(scope, Exit.void));

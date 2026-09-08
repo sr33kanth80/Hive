@@ -70,6 +70,7 @@ import * as ThreadSettlementReactor from "../src/orchestration/ThreadSettlementR
 import * as ThreadPullRequestReactor from "../src/orchestration/ThreadPullRequestReactor.ts";
 // HIVE
 import * as ClaimsReactor from "../src/orchestration/ClaimsReactor.ts";
+import * as SwarmReactor from "../src/hive/SwarmReactor.ts";
 import { ownershipFilePath as claimsOwnershipFilePath } from "@t3tools/claims/store";
 import { OrchestrationReactor } from "../src/orchestration/Services/OrchestrationReactor.ts";
 import { ProjectionSnapshotQuery } from "../src/orchestration/Services/ProjectionSnapshotQuery.ts";
@@ -406,6 +407,13 @@ export const makeOrchestrationIntegrationHarness = (
               start: () => Effect.void,
               drain: Effect.void,
             }),
+      ),
+      // HIVE: this harness exercises orchestration, not swarm execution.
+      Layer.provideMerge(
+        Layer.succeed(SwarmReactor.SwarmReactor, {
+          start: () => Effect.void,
+          drain: Effect.void,
+        }),
       ),
       Layer.provideMerge(runtimeIngestionLayer),
       Layer.provideMerge(providerCommandReactorLayer),

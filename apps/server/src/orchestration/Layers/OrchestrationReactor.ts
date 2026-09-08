@@ -14,6 +14,7 @@ import * as ThreadPullRequestReactor from "../ThreadPullRequestReactor.ts";
 import * as AgentAwarenessRelay from "../../relay/AgentAwarenessRelay.ts";
 // HIVE: ownership registry derived from settled turns.
 import * as ClaimsReactor from "../ClaimsReactor.ts";
+import * as SwarmReactor from "../../hive/SwarmReactor.ts";
 
 export const makeOrchestrationReactor = Effect.gen(function* () {
   const providerRuntimeIngestion = yield* ProviderRuntimeIngestionService;
@@ -25,6 +26,7 @@ export const makeOrchestrationReactor = Effect.gen(function* () {
   const agentAwarenessRelay = yield* AgentAwarenessRelay.AgentAwarenessRelay;
   // HIVE
   const claimsReactor = yield* ClaimsReactor.ClaimsReactor;
+  const swarmReactor = yield* SwarmReactor.SwarmReactor;
 
   const start: OrchestrationReactorShape["start"] = Effect.fn("start")(function* () {
     yield* providerRuntimeIngestion.start();
@@ -36,6 +38,7 @@ export const makeOrchestrationReactor = Effect.gen(function* () {
     yield* agentAwarenessRelay.start();
     // HIVE
     yield* claimsReactor.start();
+    yield* swarmReactor.start();
   });
 
   return {

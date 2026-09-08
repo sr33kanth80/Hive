@@ -527,6 +527,9 @@ importers:
       '@t3tools/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@t3tools/swarm':
+        specifier: workspace:*
+        version: link:../../packages/swarm
       '@t3tools/tailscale':
         specifier: workspace:*
         version: link:../../packages/tailscale

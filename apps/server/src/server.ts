@@ -77,6 +77,9 @@ import * as ClaimsReactor from "./orchestration/ClaimsReactor.ts";
 import * as ConflictDetector from "./hive/ConflictDetector.ts";
 import * as ConflictQuery from "./hive/ConflictQuery.ts";
 import { ProjectionCheckpointRepositoryLive } from "./persistence/Layers/ProjectionCheckpoints.ts";
+import * as SwarmExecutor from "./hive/SwarmExecutor.ts";
+import * as SwarmReactor from "./hive/SwarmReactor.ts";
+import * as SwarmRegistryLayer from "./hive/SwarmRegistryLayer.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import { ProviderRegistryLive } from "./provider/Layers/ProviderRegistry.ts";
@@ -289,6 +292,12 @@ const ReactorLayerLive = Layer.empty.pipe(
   Layer.provideMerge(AgentAwarenessRelay.layer.pipe(Layer.provide(ServerSecretStore.layer))),
   // HIVE
   Layer.provideMerge(ClaimsReactor.layer.pipe(Layer.provide(ClaimsReactor.claimsRegistryLayer))),
+  Layer.provideMerge(
+    SwarmReactor.layer.pipe(
+      Layer.provide(SwarmExecutor.layer),
+      Layer.provideMerge(SwarmRegistryLayer.layer),
+    ),
+  ),
   // The checkpoint repository is provided here rather than left as a
   // requirement, so the conflict query does not leak a dependency into every
   // layer graph that builds the server.
