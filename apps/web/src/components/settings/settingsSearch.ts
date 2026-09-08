@@ -10,6 +10,7 @@ export type SettingsPath =
   | "/settings/integrations"
   | "/settings/source-control"
   | "/settings/hive"
+  | "/settings/swarm"
   | "/settings/connections"
   | "/settings/archived";
 
@@ -57,6 +58,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/integrations": "Integrations",
   "/settings/source-control": "Source Control",
   // HIVE
+  "/settings/swarm": "Swarm",
   "/settings/hive": "Merge conflicts",
   "/settings/connections": "Connections",
   "/settings/archived": "Archive",

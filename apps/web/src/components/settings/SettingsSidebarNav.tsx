@@ -16,6 +16,7 @@ import {
   BotIcon,
   GitBranchIcon,
   GitMergeIcon,
+  NetworkIcon,
   PanelsTopLeftIcon,
   KeyboardIcon,
   Link2Icon,
@@ -80,6 +81,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/integrations": BlocksIcon,
   "/settings/source-control": GitBranchIcon,
   // HIVE
+  "/settings/swarm": NetworkIcon,
   "/settings/hive": GitMergeIcon,
   "/settings/connections": Link2Icon,
   "/settings/archived": ArchiveIcon,
