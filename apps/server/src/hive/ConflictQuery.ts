@@ -16,6 +16,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import { checkpointRefForThreadTurn } from "../checkpointing/Utils.ts";
 import { ProjectionCheckpointRepository } from "../persistence/Services/ProjectionCheckpoints.ts";
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ConflictDetector } from "./ConflictDetector.ts";
@@ -57,24 +58,27 @@ export const make = Effect.gen(function* () {
 
   /**
    * A thread's work lives in its checkpoints, not on its branch: checkpoints
-   * are captured to hidden refs precisely so the user's branch is left alone.
-   * Comparing branches therefore merges two identical commits and finds
-   * nothing, so the earliest checkpoint is the shared base and the latest is
-   * the thread's current state.
+   * are captured to hidden refs precisely so the user's branch is left alone,
+   * so comparing branches merges two identical commits and finds nothing.
+   *
+   * The base is the turn-0 ref, which is the thread's state before it did any
+   * work. It is derived rather than read from the projection, because the
+   * projection only records a row per *completed* turn — taking the earliest
+   * row instead would silently make turn one's changes invisible.
    */
   const resolveCheckpointBounds = Effect.fn("ConflictQuery.resolveCheckpointBounds")(function* (
     threadId: ThreadId,
   ) {
     const rows = yield* Effect.orDie(checkpoints.listByThreadId({ threadId }));
-    const ready = rows
+    const latest = rows
       .filter((row) => row.status === "ready")
-      .toSorted((left, right) => left.checkpointTurnCount - right.checkpointTurnCount);
-    const base = ready.at(0);
-    const latest = ready.at(-1);
-    // One checkpoint means the thread has a starting state but nothing to
-    // compare against it yet.
-    if (base === undefined || latest === undefined || base === latest) return null;
-    return { baseRef: base.checkpointRef, ref: latest.checkpointRef };
+      .toSorted((left, right) => left.checkpointTurnCount - right.checkpointTurnCount)
+      .at(-1);
+    if (latest === undefined) return null;
+    return {
+      baseRef: checkpointRefForThreadTurn(threadId, 0),
+      ref: latest.checkpointRef,
+    };
   });
 
   const listForProject: ConflictQuery["Service"]["listForProject"] = (input) =>
