@@ -10,6 +10,14 @@
     "./scheduler": {
       "types": "./src/scheduler.ts",
       "import": "./src/scheduler.ts"
+    },
+    "./store": {
+      "types": "./src/store.ts",
+      "import": "./src/store.ts"
+    },
+    "./registry": {
+      "types": "./src/registry.ts",
+      "import": "./src/registry.ts"
     }
   },
   "scripts": {
@@ -21,6 +29,7 @@
     "effect": "catalog:"
   },
   "devDependencies": {
+    "@effect/platform-node": "catalog:",
     "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
     "vite-plus": "catalog:"
