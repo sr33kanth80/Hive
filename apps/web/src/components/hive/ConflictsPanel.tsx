@@ -14,7 +14,7 @@ import { useEnvironmentQuery } from "../../state/query";
 
 function ConflictRow({ conflict }: { readonly conflict: HiveConflict }) {
   return (
-    <li className="rounded-md border border-border bg-surface px-3 py-2.5">
+    <li className="rounded-md border border-border/60 bg-muted/30 px-3 py-2.5">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
         <span className="font-medium">{conflict.threadTitle ?? conflict.branch}</span>
         <span className="text-muted-foreground">collides with</span>
@@ -25,7 +25,10 @@ function ConflictRow({ conflict }: { readonly conflict: HiveConflict }) {
       </div>
       <ul className="mt-2 flex flex-wrap gap-1.5">
         {conflict.files.map((file) => (
-          <li key={file} className="rounded border border-border px-1.5 py-0.5 font-mono text-xs">
+          <li
+            key={file}
+            className="rounded border border-border/50 bg-muted/50 px-1.5 py-0.5 font-mono text-xs"
+          >
             {file}
           </li>
         ))}
@@ -70,7 +73,7 @@ export function ConflictsPanel() {
         <label className="flex items-center gap-2 text-sm">
           <span className="text-muted-foreground">Project</span>
           <select
-            className="rounded border border-border bg-surface px-2 py-1"
+            className="rounded border border-input bg-background px-2 py-1"
             value={projectId ?? ""}
             onChange={(event) => setSelectedProjectId(event.target.value as ProjectId)}
           >
