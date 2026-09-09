@@ -114,6 +114,7 @@ import {
   fileAttachmentTooLargeMessage,
   formatAttachmentSize,
 } from "@t3tools/client-runtime/state/attachments";
+import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {
   attachmentsToReleaseOnUploadCapabilityLoss,
   classifyComposerAttachmentFile,
@@ -781,6 +782,7 @@ import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectValue } from "../ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 // HIVE
+import { selectSwarmEnabled, useSwarmModeStore } from "../../swarmModeStore";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { hiveEnvironment } from "../../state/hive";
 import { toastManager } from "../ui/toast";
@@ -2911,16 +2913,24 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     showPlanFollowUpPrompt,
   ]);
 
-  // HIVE: swarm is a property of this send, not of the thread, so it lives
-  // with the composer rather than in thread state.
-  const [swarmEnabled, setSwarmEnabled] = useState(false);
+  // HIVE: swarm is a mode the developer sets, so it outlives this composer
+  // instance. Reading a scalar out of the store keeps the subscription narrow —
+  // toggling one project does not re-render the composer of another.
+  const swarmEnabled = useSwarmModeStore((state) =>
+    selectSwarmEnabled(state.enabledByProjectId, swarmProjectId),
+  );
+  const setSwarmEnabled = useSwarmModeStore((state) => state.setSwarmEnabled);
+  const toggleSwarm = useCallback(() => {
+    if (swarmProjectId == null) return;
+    setSwarmEnabled(swarmProjectId, !swarmEnabled);
+  }, [setSwarmEnabled, swarmEnabled, swarmProjectId]);
 
   const submitSwarm = useCallback(
-    (projectId: ProjectId, prompt: string) => {
+    (projectId: ProjectId, prompt: string, modelSelection: ModelSelection) => {
       void (async () => {
         const result = await hiveEnvironment.createSwarmFromPrompt.run(appAtomRegistry, {
           environmentId,
-          input: { projectId, prompt },
+          input: { projectId, prompt, modelSelection },
         });
         if (result._tag === "Success") {
           const launched = result.value.launchedTaskIds.length;
@@ -2936,10 +2946,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 : "This prompt did not split, so it runs like a normal thread.",
           });
         } else {
+          // The server distinguishes an unrunnable plan from an unreachable
+          // one, and guessing "could not plan" here hid a stale server for an
+          // entire debugging session. Say what actually came back.
+          const failure = squashAtomCommandFailure(result);
+          const detail =
+            typeof failure === "object" && failure !== null && "detail" in failure
+              ? String((failure as { detail: unknown }).detail)
+              : failure instanceof Error
+                ? failure.message
+                : String(failure);
           toastManager.add({
             type: "error",
             title: "Could not start the swarm.",
-            description: "Hive could not plan this prompt. Try again or turn Swarm off.",
+            description: detail || "Turn Swarm off to send this as a normal prompt.",
           });
         }
       })();
@@ -2959,7 +2979,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         const prompt = promptRef.current.trim();
         if (prompt.length > 0) {
           event?.preventDefault();
-          submitSwarm(swarmProjectId, prompt);
+          submitSwarm(swarmProjectId, prompt, selectedModelSelection);
           promptRef.current = "";
           setPrompt("");
           return;
@@ -3004,6 +3024,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       noProviderAvailable,
       onSend,
       promptRef,
+      selectedModelSelection,
       setPrompt,
       shouldBlurMobileComposerOnSubmit,
       submitSwarm,
@@ -4031,7 +4052,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         <ComposerFooterModeControls
           showSwarmToggle={swarmProjectId != null}
           swarmEnabled={swarmEnabled}
-          onToggleSwarm={() => setSwarmEnabled((current) => !current)}
+          onToggleSwarm={toggleSwarm}
           showInteractionModeToggle={planModeUiEnabled}
           interactionMode={interactionMode}
           runtimeMode={runtimeMode}
