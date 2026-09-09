@@ -18,6 +18,7 @@ import {
   HiveConflictsListResult,
   HiveSwarmCreateInput,
   HiveSwarmCreateResult,
+  HiveSwarmFromPromptInput,
   HiveSwarmPlanInvalidError,
   HiveSwarmsListInput,
   HiveSwarmsListResult,
@@ -350,6 +351,7 @@ export const WS_METHODS = {
   // HIVE
   hiveConflictsList: "hive.conflicts.list",
   hiveSwarmsCreate: "hive.swarms.create",
+  hiveSwarmsFromPrompt: "hive.swarms.fromPrompt",
   hiveSwarmsList: "hive.swarms.list",
 
   // Cloud environment methods
@@ -418,6 +420,12 @@ const WsHiveConflictsListRpc = Rpc.make(WS_METHODS.hiveConflictsList, {
 
 const WsHiveSwarmsCreateRpc = Rpc.make(WS_METHODS.hiveSwarmsCreate, {
   payload: HiveSwarmCreateInput,
+  success: HiveSwarmCreateResult,
+  error: Schema.Union([HiveSwarmPlanInvalidError, EnvironmentAuthorizationError]),
+});
+
+const WsHiveSwarmsFromPromptRpc = Rpc.make(WS_METHODS.hiveSwarmsFromPrompt, {
+  payload: HiveSwarmFromPromptInput,
   success: HiveSwarmCreateResult,
   error: Schema.Union([HiveSwarmPlanInvalidError, EnvironmentAuthorizationError]),
 });
@@ -1220,6 +1228,7 @@ export const WsRpcGroup = RpcGroup.make(
   // HIVE
   WsHiveConflictsListRpc,
   WsHiveSwarmsCreateRpc,
+  WsHiveSwarmsFromPromptRpc,
   WsHiveSwarmsListRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,

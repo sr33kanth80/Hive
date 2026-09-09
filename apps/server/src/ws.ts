@@ -1776,6 +1776,10 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.hiveSwarmsCreate, swarmService.create(input), {
             "rpc.aggregate": "hive",
           }),
+        [WS_METHODS.hiveSwarmsFromPrompt]: (input) =>
+          observeRpcEffect(WS_METHODS.hiveSwarmsFromPrompt, swarmService.createFromPrompt(input), {
+            "rpc.aggregate": "hive",
+          }),
         [WS_METHODS.hiveSwarmsList]: (input) =>
           observeRpcEffect(
             WS_METHODS.hiveSwarmsList,

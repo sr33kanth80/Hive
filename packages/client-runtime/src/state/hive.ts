@@ -40,5 +40,11 @@ export function createHiveEnvironmentAtoms<R, E>(
       label: "environment-command:hive:create-swarm",
       tag: WS_METHODS.hiveSwarmsCreate,
     }),
+
+    /** Swarm mode from the composer: one prompt in, a planned swarm out. */
+    createSwarmFromPrompt: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:hive:create-swarm-from-prompt",
+      tag: WS_METHODS.hiveSwarmsFromPrompt,
+    }),
   };
 }

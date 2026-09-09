@@ -1,9 +1,9 @@
-// HIVE: define a swarm, launch it, and watch it run.
+// HIVE: watch swarms run.
 //
-// The developer is the decomposer for now: they write the tasks and say which
-// ones wait on which. Automating the split is a separate problem, and doing it
-// badly is worse than not doing it — five agents inventing the same interface
-// five ways costs more than doing the work serially would have.
+// Creation lives in the composer — toggle Swarm on and send a prompt. This is
+// the observation surface: what Hive split the prompt into, what is running,
+// and what is waiting on what. Two ways to start the same thing would only be
+// confusing, so there is no task form here.
 
 import type { EnvironmentId, HiveSwarm, HiveSwarmTask, ProjectId } from "@t3tools/contracts";
 import { useMemo, useState } from "react";
@@ -179,67 +179,13 @@ export function SwarmPanel() {
         </label>
       ) : null}
 
-      <div className="flex max-w-3xl flex-col gap-3">
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-muted-foreground">What are you trying to get done?</span>
-          <input
-            className="rounded border border-input bg-background px-2 py-1.5"
-            placeholder="Migrate the API to the new client"
-            value={goal}
-            onChange={(event) => setGoal(event.target.value)}
-          />
-        </label>
-
-        <div className="flex flex-col gap-2">
-          <span className="text-sm text-muted-foreground">
-            Tasks — numbered in order. Leave dependencies empty to run immediately.
-          </span>
-          {drafts.map((draft, index) => (
-            <div key={draft.key} className="flex items-center gap-2">
-              <span className="w-5 shrink-0 font-mono text-xs text-muted-foreground">
-                {index + 1}
-              </span>
-              <input
-                className="flex-1 rounded border border-input bg-background px-2 py-1.5 text-sm"
-                placeholder="What this agent should do"
-                value={draft.title}
-                onChange={(event) => updateDraft(draft.key, { title: event.target.value })}
-              />
-              <input
-                className="w-32 rounded border border-input bg-background px-2 py-1.5 font-mono text-xs"
-                placeholder="after 1, 2"
-                value={draft.dependsOn}
-                onChange={(event) => updateDraft(draft.key, { dependsOn: event.target.value })}
-              />
-            </div>
-          ))}
-          <button
-            type="button"
-            className="self-start rounded border border-border/60 px-2 py-1 text-xs"
-            onClick={() => setDrafts((current) => [...current, newDraft()])}
-          >
-            Add task
-          </button>
-        </div>
-
-        {error !== null ? <p className="text-sm text-red-500">{error}</p> : null}
-
-        <button
-          type="button"
-          className="self-start rounded bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
-          disabled={!canSubmit}
-          onClick={() => void submit()}
-        >
-          {submitting ? "Starting…" : "Start swarm"}
-        </button>
-      </div>
-
       <div className="flex flex-col gap-2">
-        <h3 className="text-sm font-semibold">Running and finished</h3>
         {projectId === null ? (
           <p className="text-sm text-muted-foreground">No project selected.</p>
         ) : swarms.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No swarms on this project yet.</p>
+          <p className="text-sm text-muted-foreground">
+            No swarms yet. Send a prompt with Swarm turned on.
+          </p>
         ) : (
           <ul className="flex max-w-3xl flex-col gap-2">
             {swarms.map((swarm) => (

@@ -34,6 +34,7 @@ export const RPC_REQUIRED_SCOPES = {
   // Listing is read-only; creating a swarm starts agents, so it needs operate.
   [WS_METHODS.hiveSwarmsList]: AuthOrchestrationReadScope,
   [WS_METHODS.hiveSwarmsCreate]: AuthOrchestrationOperateScope,
+  [WS_METHODS.hiveSwarmsFromPrompt]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverProbe]: AuthOrchestrationReadScope,
   [WS_METHODS.serverGetConfig]: AuthOrchestrationReadScope,
   [WS_METHODS.serverRefreshProviders]: AuthOrchestrationOperateScope,

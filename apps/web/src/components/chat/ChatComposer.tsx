@@ -7,6 +7,7 @@ import type {
   ModelSelection,
   PreviewAnnotationPayload,
   ProviderApprovalDecision,
+  ProjectId,
   ProviderInteractionMode,
   ResolvedKeybindingsConfig,
   RuntimeMode,
@@ -779,6 +780,9 @@ function ComposerCommandMenuLayer(props: { anchor: HTMLElement | null; children:
 import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectValue } from "../ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+// HIVE
+import { appAtomRegistry } from "../../rpc/atomRegistry";
+import { hiveEnvironment } from "../../state/hive";
 import { toastManager } from "../ui/toast";
 import {
   BotIcon,
@@ -936,6 +940,10 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
   hidden?: boolean;
   onToggleInteractionMode: () => void;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
+  // HIVE
+  showSwarmToggle: boolean;
+  swarmEnabled: boolean;
+  onToggleSwarm: () => void;
 }) {
   const size = props.size ?? "sm";
   const [open, setOpen] = useComposerMenuState(props.hidden);
@@ -1039,6 +1047,40 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
       </Tooltip>
 
       {interactionModeToggle}
+      {/*
+        HIVE: swarm sits beside the access picker because it changes what a
+        send does, the same way plan mode does — not what the agent is allowed
+        to touch.
+      */}
+      {props.showSwarmToggle ? (
+        <>
+          <ComposerControlSeparator size={size} />
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <ComposerControl
+                  size={size}
+                  className={cn(
+                    "shrink-0 whitespace-nowrap",
+                    props.swarmEnabled
+                      ? "bg-accent text-accent-foreground hover:bg-accent/80"
+                      : undefined,
+                  )}
+                  onClick={props.onToggleSwarm}
+                  aria-pressed={props.swarmEnabled}
+                >
+                  Swarm
+                </ComposerControl>
+              }
+            />
+            <TooltipPopup side="top">
+              {props.swarmEnabled
+                ? "Swarm on — this prompt is split across parallel agents when it can be"
+                : "Swarm off — click to run this prompt as parallel agents when it splits"}
+            </TooltipPopup>
+          </Tooltip>
+        </>
+      ) : null}
     </>
   );
 });
@@ -1237,6 +1279,8 @@ export interface ChatComposerProps {
   lockedProvider: ProviderDriverKind | null;
   providerStatuses: ServerProvider[];
   activeProjectDefaultModelSelection: ModelSelection | null | undefined;
+  /** HIVE: the project a swarm would run in. Null disables the swarm toggle. */
+  swarmProjectId?: ProjectId | null;
   activeThreadModelSelection: ModelSelection | null | undefined;
 
   // Context window
@@ -1354,6 +1398,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     lockedProvider,
     providerStatuses,
     activeProjectDefaultModelSelection,
+    swarmProjectId,
     activeThreadModelSelection,
     activeContextWindow,
     compactThreadUnavailable,
@@ -2866,11 +2911,59 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     showPlanFollowUpPrompt,
   ]);
 
+  // HIVE: swarm is a property of this send, not of the thread, so it lives
+  // with the composer rather than in thread state.
+  const [swarmEnabled, setSwarmEnabled] = useState(false);
+
+  const submitSwarm = useCallback(
+    (projectId: ProjectId, prompt: string) => {
+      void (async () => {
+        const result = await hiveEnvironment.createSwarmFromPrompt.run(appAtomRegistry, {
+          environmentId,
+          input: { projectId, prompt },
+        });
+        if (result._tag === "Success") {
+          const launched = result.value.launchedTaskIds.length;
+          toastManager.add({
+            type: "info",
+            title:
+              launched > 1
+                ? `Swarm started — ${launched} agents running in parallel`
+                : "Swarm started — running as a single task",
+            description:
+              launched > 1
+                ? "Each agent works in its own worktree. Watch them in Settings → Swarm."
+                : "This prompt did not split, so it runs like a normal thread.",
+          });
+        } else {
+          toastManager.add({
+            type: "error",
+            title: "Could not start the swarm.",
+            description: "Hive could not plan this prompt. Try again or turn Swarm off.",
+          });
+        }
+      })();
+    },
+    [environmentId],
+  );
+
   const submitComposer = useCallback(
     (event?: { preventDefault: () => void }, intent: ComposerSubmissionIntent = "foreground") => {
       if (noProviderAvailable || isSendDisabled) {
         event?.preventDefault();
         return;
+      }
+      // HIVE: with swarm on, the prompt is planned and fanned out instead of
+      // becoming one turn on this thread.
+      if (swarmEnabled && swarmProjectId != null) {
+        const prompt = promptRef.current.trim();
+        if (prompt.length > 0) {
+          event?.preventDefault();
+          submitSwarm(swarmProjectId, prompt);
+          promptRef.current = "";
+          setPrompt("");
+          return;
+        }
       }
       // A send while a pasted image is still compressing would strand that
       // image: the turn snapshot wouldn't include it, and it would surface
@@ -2911,7 +3004,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       noProviderAvailable,
       onSend,
       promptRef,
+      setPrompt,
       shouldBlurMobileComposerOnSubmit,
+      submitSwarm,
+      swarmEnabled,
+      swarmProjectId,
     ],
   );
   const submitCitationAndSend = useCallback(() => {
@@ -3932,6 +4029,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       id: "mode",
       content: (
         <ComposerFooterModeControls
+          showSwarmToggle={swarmProjectId != null}
+          swarmEnabled={swarmEnabled}
+          onToggleSwarm={() => setSwarmEnabled((current) => !current)}
           showInteractionModeToggle={planModeUiEnabled}
           interactionMode={interactionMode}
           runtimeMode={runtimeMode}

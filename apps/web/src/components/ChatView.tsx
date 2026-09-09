@@ -8020,6 +8020,8 @@ export default function ChatView(props: ChatViewProps) {
                       <ComposerSurface.Host>
                         <div ref={attachDraftHeroComposerAnchorRef} className="relative z-10">
                           <ChatComposer
+                            /* HIVE: enables the swarm toggle for this project. */
+                            swarmProjectId={activeProject?.id ?? null}
                             composerRef={composerRef}
                             composerDraftTarget={composerDraftTarget}
                             environmentId={environmentId}

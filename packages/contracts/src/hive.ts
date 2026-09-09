@@ -132,3 +132,13 @@ export class HiveSwarmPlanInvalidError extends Schema.TaggedErrorClass<HiveSwarm
     detail: TrimmedNonEmptyString,
   },
 ) {}
+
+/**
+ * Swarm mode from the composer: the developer types one prompt and Hive works
+ * out whether it splits. `cwd` is the workspace the planner reasons about.
+ */
+export const HiveSwarmFromPromptInput = Schema.Struct({
+  projectId: ProjectId,
+  prompt: TrimmedNonEmptyString,
+});
+export type HiveSwarmFromPromptInput = typeof HiveSwarmFromPromptInput.Type;
