@@ -150,11 +150,15 @@ export const make = Effect.gen(function* () {
         return [];
       }
 
+      // Pinned at creation, so a wave of dependent tasks launching minutes
+      // later runs on the provider the developer picked rather than whatever
+      // the project default happens to say by then.
       const provider = ProviderDriverKind.make("codex");
-      const modelSelection: ModelSelection = project.defaultModelSelection ?? {
-        instanceId: defaultInstanceIdForDriver(provider),
-        model: DEFAULT_MODEL_BY_PROVIDER[provider] ?? DEFAULT_MODEL,
-      };
+      const modelSelection: ModelSelection = swarm.modelSelection ??
+        project.defaultModelSelection ?? {
+          instanceId: defaultInstanceIdForDriver(provider),
+          model: DEFAULT_MODEL_BY_PROVIDER[provider] ?? DEFAULT_MODEL,
+        };
 
       // Tasks are launched one at a time even though they will run in
       // parallel: `git worktree add` mutates shared repository state, so

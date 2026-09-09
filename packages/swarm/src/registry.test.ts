@@ -1,6 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
-import type { ProjectId, ThreadId } from "@t3tools/contracts";
+import type { ModelSelection, ProjectId, ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 
@@ -30,6 +30,33 @@ const fanOutPlan = {
 };
 
 describe("SwarmRegistry", () => {
+  it.effect("pins the swarm's model selection and survives a reload", () =>
+    Effect.gen(function* () {
+      const { registry, filePath } = yield* makeRegistryInTempDir;
+      const modelSelection = {
+        instanceId: "opencode",
+        model: "some-model",
+      } as unknown as ModelSelection;
+
+      yield* registry.create({ ...fanOutPlan, modelSelection });
+
+      // Dependent tasks launch in a later wave, long after the request that
+      // created the swarm. If the selection did not survive the round trip to
+      // disk, that wave would silently fall back to another provider.
+      const reloaded = yield* loadSwarms(filePath);
+      assert.deepStrictEqual(reloaded.swarms[0]?.modelSelection, modelSelection);
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  );
+
+  it.effect("leaves the selection absent when none was given", () =>
+    Effect.gen(function* () {
+      const { registry } = yield* makeRegistryInTempDir;
+      yield* registry.create(fanOutPlan);
+      const swarm = yield* registry.get("swarm-1");
+      assert.strictEqual(swarm?.modelSelection, undefined);
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  );
+
   it.effect("starts independent work together and holds dependent work back", () =>
     Effect.gen(function* () {
       const { registry } = yield* makeRegistryInTempDir;

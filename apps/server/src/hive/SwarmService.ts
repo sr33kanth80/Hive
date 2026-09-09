@@ -70,6 +70,7 @@ export const make = Effect.gen(function* () {
             title: task.title,
             ...(task.dependsOn === undefined ? {} : { dependsOn: task.dependsOn }),
           })),
+          ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
         })
         // An unrunnable plan is a client mistake worth naming, not a defect.
         .pipe(
@@ -101,11 +102,15 @@ export const make = Effect.gen(function* () {
         );
       }
 
+      // The composer's picker wins. It is what the developer can actually see
+      // and change; the project default is only a fallback for callers that
+      // have no picker, and hardcoded codex only for a project without one.
       const provider = ProviderDriverKind.make("codex");
-      const modelSelection: ModelSelection = project.defaultModelSelection ?? {
-        instanceId: defaultInstanceIdForDriver(provider),
-        model: DEFAULT_MODEL_BY_PROVIDER[provider] ?? DEFAULT_MODEL,
-      };
+      const modelSelection: ModelSelection = input.modelSelection ??
+        project.defaultModelSelection ?? {
+          instanceId: defaultInstanceIdForDriver(provider),
+          model: DEFAULT_MODEL_BY_PROVIDER[provider] ?? DEFAULT_MODEL,
+        };
 
       // A planner that cannot answer must not block the request: falling back
       // to one task means swarm mode degrades to an ordinary thread rather
@@ -132,6 +137,7 @@ export const make = Effect.gen(function* () {
           title: task.title,
           dependsOn: task.dependsOn,
         })),
+        modelSelection,
       });
     });
 

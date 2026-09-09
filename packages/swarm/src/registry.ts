@@ -4,7 +4,7 @@
 // them apart means the ordering logic stays pure and testable, and the mutable
 // part stays small enough to reason about.
 
-import type { ProjectId, ThreadId } from "@t3tools/contracts";
+import type { ModelSelection, ProjectId, ThreadId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -40,6 +40,8 @@ export interface CreateSwarmInput {
     readonly title: string;
     readonly dependsOn?: ReadonlyArray<SwarmTaskId>;
   }>;
+  /** Provider and model every task runs on, pinned for the swarm's lifetime. */
+  readonly modelSelection?: ModelSelection;
 }
 
 export class SwarmRegistry extends Context.Service<
@@ -142,6 +144,7 @@ export const make = (filePath: string) =>
           goal: input.goal,
           status: "running",
           tasks,
+          ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
           createdAt: at,
           updatedAt: at,
         };

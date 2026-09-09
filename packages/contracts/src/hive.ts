@@ -7,6 +7,7 @@
 import * as Schema from "effect/Schema";
 
 import { ProjectId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { ModelSelection } from "./orchestration.ts";
 
 /**
  * One directed prediction: merging `branch` with `otherBranch` conflicts on
@@ -88,6 +89,14 @@ export const HiveSwarm = Schema.Struct({
   goal: TrimmedNonEmptyString,
   status: HiveSwarmStatus,
   tasks: Schema.Array(HiveSwarmTask),
+  /**
+   * The provider and model every task in this swarm runs on, captured when the
+   * swarm was created. Stored rather than re-derived because a swarm outlives
+   * the request that made it: dependent tasks launch in later waves, and
+   * re-reading a default then would silently move them to another provider.
+   * Optional so swarms written before this field decode unchanged.
+   */
+  modelSelection: Schema.optional(ModelSelection),
   createdAt: Schema.String,
   updatedAt: Schema.String,
 });
@@ -105,6 +114,8 @@ export const HiveSwarmCreateInput = Schema.Struct({
   ),
   /** Start the first wave immediately. False stores the plan without running it. */
   launch: Schema.optional(Schema.Boolean),
+  /** Provider and model to run on. Falls back to the project default. */
+  modelSelection: Schema.optional(ModelSelection),
 });
 export type HiveSwarmCreateInput = typeof HiveSwarmCreateInput.Type;
 
@@ -140,5 +151,11 @@ export class HiveSwarmPlanInvalidError extends Schema.TaggedErrorClass<HiveSwarm
 export const HiveSwarmFromPromptInput = Schema.Struct({
   projectId: ProjectId,
   prompt: TrimmedNonEmptyString,
+  /**
+   * What the composer had selected when the developer hit send. Swarm mode is
+   * still a send, so it honours the picker the same way an ordinary turn does
+   * rather than reaching for a project default the developer cannot see.
+   */
+  modelSelection: Schema.optional(ModelSelection),
 });
 export type HiveSwarmFromPromptInput = typeof HiveSwarmFromPromptInput.Type;
