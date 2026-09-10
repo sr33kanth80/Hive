@@ -8,18 +8,10 @@
 import type { EnvironmentId, HiveSwarm, HiveSwarmTask, ProjectId } from "@t3tools/contracts";
 import { useMemo, useState } from "react";
 
-import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { hiveEnvironment } from "../../state/hive";
 import { useProjects } from "../../state/entities";
 import { usePrimaryEnvironment } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
-
-interface DraftTask {
-  readonly key: string;
-  readonly title: string;
-  /** Ids this task waits for, as the developer typed them. */
-  readonly dependsOn: string;
-}
 
 const STATUS_LABEL: Readonly<Record<HiveSwarmTask["status"], string>> = {
   pending: "waiting",
@@ -81,9 +73,6 @@ function SwarmCard({ swarm }: { readonly swarm: HiveSwarm }) {
   );
 }
 
-let nextKey = 0;
-const newDraft = (): DraftTask => ({ key: `draft-${nextKey++}`, title: "", dependsOn: "" });
-
 export function SwarmPanel() {
   const primaryEnvironment = usePrimaryEnvironment();
   const environmentId: EnvironmentId | null = primaryEnvironment?.environmentId ?? null;
@@ -97,65 +86,12 @@ export function SwarmPanel() {
   const [selectedProjectId, setSelectedProjectId] = useState<ProjectId | null>(null);
   const projectId = selectedProjectId ?? environmentProjects[0]?.id ?? null;
 
-  const [goal, setGoal] = useState("");
-  const [drafts, setDrafts] = useState<ReadonlyArray<DraftTask>>(() => [newDraft(), newDraft()]);
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
   const query = useEnvironmentQuery(
     environmentId === null || projectId === null
       ? null
       : hiveEnvironment.swarms({ environmentId, input: { projectId } }),
   );
   const swarms = query.data?.swarms ?? [];
-
-  const updateDraft = (key: string, patch: Partial<DraftTask>) => {
-    setDrafts((current) =>
-      current.map((draft) => (draft.key === key ? { ...draft, ...patch } : draft)),
-    );
-  };
-
-  const canSubmit =
-    environmentId !== null &&
-    projectId !== null &&
-    goal.trim().length > 0 &&
-    drafts.some((draft) => draft.title.trim().length > 0) &&
-    !submitting;
-
-  const submit = async () => {
-    if (environmentId === null || projectId === null) return;
-    setSubmitting(true);
-    setError(null);
-
-    // Task ids are positional so the developer can write "1, 2" as
-    // dependencies rather than inventing names for everything.
-    const tasks = drafts
-      .map((draft, index) => ({ draft, id: String(index + 1) }))
-      .filter((entry) => entry.draft.title.trim().length > 0)
-      .map((entry) => ({
-        id: entry.id,
-        title: entry.draft.title.trim(),
-        dependsOn: entry.draft.dependsOn
-          .split(",")
-          .map((value) => value.trim())
-          .filter((value) => value.length > 0),
-      }));
-
-    // The command reports failure as a result rather than throwing, so an
-    // invalid plan surfaces here instead of vanishing into a rejected promise.
-    const result = await hiveEnvironment.createSwarm.run(appAtomRegistry, {
-      environmentId,
-      input: { projectId, goal: goal.trim(), tasks },
-    });
-
-    if (result._tag === "Success") {
-      setGoal("");
-      setDrafts([newDraft(), newDraft()]);
-    } else {
-      setError("Could not start the swarm. Check the task dependencies.");
-    }
-    setSubmitting(false);
-  };
 
   return (
     <section className="flex flex-col gap-5 p-4">
