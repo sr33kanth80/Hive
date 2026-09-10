@@ -76,6 +76,14 @@ export const HiveSwarmTask = Schema.Struct({
   dependsOn: Schema.Array(HiveSwarmTaskId),
   status: HiveSwarmTaskStatus,
   threadId: Schema.NullOr(ThreadId),
+  /**
+   * Why the task ended up in its current status, when there is something to
+   * say — the provider's `lastError` for a failed run, or the reason a task
+   * could not be launched at all. A bare `failed` forces whoever is debugging
+   * to go correlate logs by hand, which is exactly the dead end this avoids.
+   * Optional so tasks written before this field decode unchanged.
+   */
+  detail: Schema.optional(TrimmedNonEmptyString),
 });
 export type HiveSwarmTask = typeof HiveSwarmTask.Type;
 

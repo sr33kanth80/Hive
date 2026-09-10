@@ -32,6 +32,8 @@ export class SwarmReactor extends Context.Service<
 interface ThreadOutcome {
   readonly threadId: ThreadId;
   readonly status: "done" | "failed";
+  /** The provider's own account of what went wrong, when it gave one. */
+  readonly detail: string | null;
 }
 
 export const make = Effect.gen(function* () {
@@ -49,7 +51,17 @@ export const make = Effect.gen(function* () {
       swarmId: found.swarm.id,
       taskId: found.task.id,
       status: outcome.status,
+      detail: outcome.detail,
     });
+
+    if (outcome.status === "failed") {
+      yield* Effect.logWarning("hive swarm task failed", {
+        swarmId: found.swarm.id,
+        taskId: found.task.id,
+        threadId: outcome.threadId,
+        detail: outcome.detail ?? "(provider reported no error text)",
+      });
+    }
 
     // Finishing one task is the only thing that can unblock another, so this
     // is exactly when the next wave should start.
@@ -85,17 +97,24 @@ export const make = Effect.gen(function* () {
     if (event.type !== "thread.session-set") return Effect.void;
     const payload = event.payload as {
       readonly threadId?: unknown;
-      readonly session?: { readonly status?: unknown };
+      readonly session?: { readonly status?: unknown; readonly lastError?: unknown };
     };
     const threadId = payload.threadId;
     const status = payload.session?.status;
     if (typeof threadId !== "string") return Effect.void;
 
     if (status === "error") {
-      return worker.enqueue({ threadId: threadId as ThreadId, status: "failed" });
+      // `lastError` is the provider's own message. Carrying it onto the task
+      // is the difference between a debuggable failure and a bare "failed".
+      const lastError = payload.session?.lastError;
+      return worker.enqueue({
+        threadId: threadId as ThreadId,
+        status: "failed",
+        detail: typeof lastError === "string" ? lastError : null,
+      });
     }
     if (status === "ready" || status === "stopped") {
-      return worker.enqueue({ threadId: threadId as ThreadId, status: "done" });
+      return worker.enqueue({ threadId: threadId as ThreadId, status: "done", detail: null });
     }
     return Effect.void;
   };

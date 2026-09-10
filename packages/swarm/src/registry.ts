@@ -62,6 +62,8 @@ export class SwarmRegistry extends Context.Service<
       readonly swarmId: SwarmId;
       readonly taskId: SwarmTaskId;
       readonly status: Extract<SwarmTaskStatus, "done" | "failed">;
+      /** Why it ended this way, when the caller knows. */
+      readonly detail?: string | null;
     }) => Effect.Effect<void>;
     /** Find the swarm and task a thread belongs to, if any. */
     readonly findByThread: (
@@ -69,6 +71,16 @@ export class SwarmRegistry extends Context.Service<
     ) => Effect.Effect<{ readonly swarm: Swarm; readonly task: SwarmTask } | null>;
     /** Tasks that may start now. */
     readonly claimRunnable: (id: SwarmId) => Effect.Effect<ReadonlyArray<SwarmTask>>;
+    /**
+     * A task that could not be started at all. Distinct from `markFinished`
+     * because it never had a thread: without this it would sit `pending`
+     * forever and the swarm would look busy rather than broken.
+     */
+    readonly markLaunchFailed: (input: {
+      readonly swarmId: SwarmId;
+      readonly taskId: SwarmTaskId;
+      readonly detail: string;
+    }) => Effect.Effect<void>;
   }
 >()("@t3tools/swarm/registry/SwarmRegistry") {}
 
@@ -179,9 +191,13 @@ export const make = (filePath: string) =>
     const markFinished: SwarmRegistry["Service"]["markFinished"] = (input) =>
       mutate((swarms, at) =>
         updateSwarm(swarms, input.swarmId, at, (swarm) => {
+          const detail = input.detail?.trim();
           const settled = updateTask(swarm, input.taskId, (task) => ({
             ...task,
             status: input.status,
+            // A blank reason must not overwrite one already recorded, and an
+            // empty string is not a valid TrimmedNonEmptyString.
+            ...(detail ? { detail } : {}),
           }));
           // A failure strands the work downstream of it. Marking that now is
           // what stops a dead swarm from looking like it is still progressing.
@@ -207,6 +223,25 @@ export const make = (filePath: string) =>
     const claimRunnable: SwarmRegistry["Service"]["claimRunnable"] = (id) =>
       Effect.map(get(id), (swarm) => (swarm === null ? [] : runnableTasks(swarm)));
 
+    const markLaunchFailed: SwarmRegistry["Service"]["markLaunchFailed"] = (input) =>
+      mutate((swarms, at) =>
+        updateSwarm(swarms, input.swarmId, at, (swarm) => {
+          const detail = input.detail.trim();
+          const settled = updateTask(swarm, input.taskId, (task) => ({
+            ...task,
+            status: "failed" as const,
+            ...(detail ? { detail } : {}),
+          }));
+          const stranded = new Set(unreachableTasks(settled).map((task) => task.id));
+          return {
+            ...settled,
+            tasks: settled.tasks.map((task) =>
+              stranded.has(task.id) ? { ...task, status: "blocked" as const } : task,
+            ),
+          };
+        }),
+      );
+
     return {
       create,
       get,
@@ -216,6 +251,7 @@ export const make = (filePath: string) =>
       markFinished,
       findByThread,
       claimRunnable,
+      markLaunchFailed,
     } satisfies SwarmRegistry["Service"];
   });
 

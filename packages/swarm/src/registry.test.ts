@@ -30,6 +30,77 @@ const fanOutPlan = {
 };
 
 describe("SwarmRegistry", () => {
+  it.effect("records why a task failed", () =>
+    Effect.gen(function* () {
+      const { registry } = yield* makeRegistryInTempDir;
+      yield* registry.create(fanOutPlan);
+      yield* registry.markRunning({
+        swarmId: "swarm-1",
+        taskId: "a",
+        threadId: "thread-a" as ThreadId,
+      });
+      yield* registry.markFinished({
+        swarmId: "swarm-1",
+        taskId: "a",
+        status: "failed",
+        detail: "provider exited: credentials expired",
+      });
+
+      const swarm = yield* registry.get("swarm-1");
+      const task = swarm?.tasks.find((entry) => entry.id === "a");
+      assert.strictEqual(task?.status, "failed");
+      assert.strictEqual(task?.detail, "provider exited: credentials expired");
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  );
+
+  it.effect("keeps a recorded reason when a later update has none", () =>
+    Effect.gen(function* () {
+      const { registry } = yield* makeRegistryInTempDir;
+      yield* registry.create(fanOutPlan);
+      yield* registry.markRunning({
+        swarmId: "swarm-1",
+        taskId: "a",
+        threadId: "thread-a" as ThreadId,
+      });
+      yield* registry.markFinished({
+        swarmId: "swarm-1",
+        taskId: "a",
+        status: "failed",
+        detail: "the real reason",
+      });
+      // A provider that reports no text must not erase what we already know.
+      yield* registry.markFinished({ swarmId: "swarm-1", taskId: "a", status: "failed" });
+
+      const swarm = yield* registry.get("swarm-1");
+      assert.strictEqual(swarm?.tasks.find((entry) => entry.id === "a")?.detail, "the real reason");
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  );
+
+  it.effect("fails a task that could never launch and strands its dependents", () =>
+    Effect.gen(function* () {
+      const { registry } = yield* makeRegistryInTempDir;
+      yield* registry.create(fanOutPlan);
+      yield* registry.markLaunchFailed({
+        swarmId: "swarm-1",
+        taskId: "a",
+        detail: "Could not start this task: worktree add failed",
+      });
+
+      const swarm = yield* registry.get("swarm-1");
+      const a = swarm?.tasks.find((entry) => entry.id === "a");
+      assert.strictEqual(a?.status, "failed");
+      assert.match(a?.detail ?? "", /worktree add failed/u);
+
+      // c waits on a, so it can never run. It must not keep looking pending.
+      assert.strictEqual(swarm?.tasks.find((entry) => entry.id === "c")?.status, "blocked");
+      // A task that never launched must not be handed out as runnable again.
+      assert.deepStrictEqual(
+        (yield* registry.claimRunnable("swarm-1")).map((task) => task.id),
+        ["b"],
+      );
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  );
+
   it.effect("pins the swarm's model selection and survives a reload", () =>
     Effect.gen(function* () {
       const { registry, filePath } = yield* makeRegistryInTempDir;

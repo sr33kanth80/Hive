@@ -51,6 +51,11 @@ function TaskRow({ task }: { readonly task: HiveSwarmTask }) {
           after {task.dependsOn.join(", ")}
         </span>
       ) : null}
+      {task.detail !== undefined ? (
+        // Full width on its own line: provider errors are long, and truncating
+        // the one thing that explains a failure defeats the point of keeping it.
+        <span className="w-full break-words text-xs text-muted-foreground">{task.detail}</span>
+      ) : null}
     </li>
   );
 }

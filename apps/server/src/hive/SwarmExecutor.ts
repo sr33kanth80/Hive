@@ -21,6 +21,7 @@ import {
 } from "@t3tools/contracts";
 import { SwarmRegistry } from "@t3tools/swarm/registry";
 import type { Swarm, SwarmId, SwarmTask } from "@t3tools/swarm/schema";
+import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -172,12 +173,23 @@ export const make = Effect.gen(function* () {
           modelSelection,
         }).pipe(
           // One task failing to start must not strand the rest of the wave.
+          // It must not silently stay `pending` either: with no thread to
+          // report an outcome later, nothing else would ever settle it.
           Effect.catchCause((cause) =>
             Effect.logWarning("hive swarm task failed to launch", {
               swarmId,
               taskId: task.id,
-              cause: String(cause),
-            }).pipe(Effect.as(null)),
+              cause: Cause.pretty(cause),
+            }).pipe(
+              Effect.andThen(
+                registry.markLaunchFailed({
+                  swarmId,
+                  taskId: task.id,
+                  detail: `Could not start this task: ${Cause.pretty(cause)}`,
+                }),
+              ),
+              Effect.as(null),
+            ),
           ),
         );
         if (result !== null) launched.push(result);
