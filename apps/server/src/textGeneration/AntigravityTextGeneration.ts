@@ -408,8 +408,10 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
-    // HIVE: this driver has no structured-output path, so swarm mode runs the
-    // prompt as a single task rather than guessing at a split.
+    // HIVE: no planner for this driver yet, so swarm mode runs the prompt as a
+    // single task. Not a capability limit — this driver has a structured-output
+    // path like the others; see OpenCodeTextGeneration.generateSwarmPlan for
+    // what implementing it looks like.
     generateSwarmPlan: (input: TextGeneration.SwarmPlanGenerationInput) =>
       Effect.succeed(singleTaskSwarmPlan(input.message)),
   } satisfies TextGeneration.TextGeneration["Service"];

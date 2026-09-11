@@ -204,6 +204,56 @@ export function buildBranchNamePrompt(input: BranchNamePromptInput) {
 }
 
 // ---------------------------------------------------------------------------
+// Swarm plan
+// ---------------------------------------------------------------------------
+
+export interface SwarmPlanPromptInput {
+  message: string;
+}
+
+/**
+ * HIVE: split one request into tasks a group of agents can run at once.
+ *
+ * Deliberately biased against splitting. Agents in a swarm work in separate
+ * worktrees and cannot see each other, so two of them told to touch the same
+ * function produce a guaranteed merge conflict rather than parallel progress.
+ * A single task is always a valid answer.
+ */
+export function buildSwarmPlanPrompt(input: SwarmPlanPromptInput) {
+  const prompt = [
+    "You are planning work for a team of coding agents on one repository.",
+    "Split the request below ONLY if the pieces are genuinely independent —",
+    "different files, no shared interface to agree on. If the work is one",
+    "coherent change, or the parts must agree with each other, return a",
+    "single task containing the original request. Splitting badly is worse",
+    "than not splitting: separate agents cannot see each other's work.",
+    "",
+    "Use short numeric ids ('1', '2', ...). dependsOn lists ids that must",
+    "finish first; use it for ordering, and leave it empty for work that can",
+    "start immediately. Each title must be a complete, self-contained",
+    "instruction, because the agent running it sees nothing else.",
+    "Never invent work that was not asked for.",
+    "",
+    "Return a JSON object with key: tasks.",
+    "",
+    "Request:",
+    limitSection(input.message, 8_000),
+  ].join("\n");
+
+  const outputSchema = Schema.Struct({
+    tasks: Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        title: Schema.String,
+        dependsOn: Schema.Array(Schema.String),
+      }),
+    ),
+  });
+
+  return { prompt, outputSchema };
+}
+
+// ---------------------------------------------------------------------------
 // Thread title
 // ---------------------------------------------------------------------------
 

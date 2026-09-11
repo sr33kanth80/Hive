@@ -25,6 +25,7 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
+  buildSwarmPlanPrompt,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
 import {
@@ -416,34 +417,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
    */
   const generateSwarmPlan: TextGeneration.TextGeneration["Service"]["generateSwarmPlan"] =
     Effect.fn("CodexTextGeneration.generateSwarmPlan")(function* (input) {
-      const outputSchema = Schema.Struct({
-        tasks: Schema.Array(
-          Schema.Struct({
-            id: Schema.String,
-            title: Schema.String,
-            dependsOn: Schema.Array(Schema.String),
-          }),
-        ),
-      });
-
-      const prompt = [
-        "You are planning work for a team of coding agents on one repository.",
-        "Split the request below ONLY if the pieces are genuinely independent —",
-        "different files, no shared interface to agree on. If the work is one",
-        "coherent change, or the parts must agree with each other, return a",
-        "single task containing the original request. Splitting badly is worse",
-        "than not splitting: separate agents cannot see each other's work.",
-        "",
-        "Use short numeric ids ('1', '2', ...). dependsOn lists ids that must",
-        "finish first; use it for ordering, and leave it empty for work that can",
-        "start immediately. Each title must be a complete, self-contained",
-        "instruction, because the agent running it sees nothing else.",
-        "Never invent work that was not asked for.",
-        "",
-        "Request:",
-        input.message,
-      ].join("\n");
-
+      const { prompt, outputSchema } = buildSwarmPlanPrompt({ message: input.message });
       const generated = yield* runCodexJson({
         operation: "generateSwarmPlan",
         cwd: input.cwd,
@@ -451,18 +425,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
         outputSchemaJson: outputSchema,
         modelSelection: input.modelSelection,
       });
-
-      const tasks = generated.tasks
-        .filter((task) => task.title.trim().length > 0)
-        .map((task) => ({
-          id: task.id.trim(),
-          title: task.title.trim(),
-          dependsOn: task.dependsOn.map((value) => value.trim()).filter((v) => v.length > 0),
-        }));
-
-      // An empty or unusable plan falls back to running the prompt as one task
-      // rather than silently doing nothing.
-      return tasks.length === 0 ? TextGeneration.singleTaskSwarmPlan(input.message) : { tasks };
+      return TextGeneration.normalizeSwarmPlan(input.message, generated.tasks);
     });
 
   return {

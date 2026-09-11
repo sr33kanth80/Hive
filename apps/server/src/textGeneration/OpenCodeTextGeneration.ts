@@ -18,6 +18,7 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
+  buildSwarmPlanPrompt,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
 import * as TextGeneration from "./TextGeneration.ts";
@@ -34,6 +35,7 @@ const OpenCodeTextGenerationOperation = Schema.Literals([
   "generatePrContent",
   "generateBranchName",
   "generateThreadTitle",
+  "generateSwarmPlan",
 ]);
 
 type OpenCodeTextGenerationOperation = typeof OpenCodeTextGenerationOperation.Type;
@@ -451,14 +453,26 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
       };
     });
 
+  // HIVE: opencode already does structured generation for commit messages and
+  // PR content, so planning a swarm is the same shape with a different schema.
+  const generateSwarmPlan: TextGeneration.TextGeneration["Service"]["generateSwarmPlan"] =
+    Effect.fn("OpenCodeTextGeneration.generateSwarmPlan")(function* (input) {
+      const { prompt, outputSchema } = buildSwarmPlanPrompt({ message: input.message });
+      const generated = yield* runOpenCodeJson({
+        operation: "generateSwarmPlan",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+      return TextGeneration.normalizeSwarmPlan(input.message, generated.tasks);
+    });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
-    // HIVE: this driver has no structured-output path, so swarm mode runs the
-    // prompt as a single task rather than guessing at a split.
-    generateSwarmPlan: (input: TextGeneration.SwarmPlanGenerationInput) =>
-      Effect.succeed(TextGeneration.singleTaskSwarmPlan(input.message)),
+    generateSwarmPlan,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

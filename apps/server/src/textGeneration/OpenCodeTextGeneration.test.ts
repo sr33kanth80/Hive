@@ -235,6 +235,69 @@ const advanceIdleClock = Effect.gen(function* () {
 });
 
 it.layer(OpenCodeTextGenerationTestLayer)("OpenCodeTextGeneration", (it) => {
+  it.effect("plans a swarm with its dependency edges intact", () =>
+    withOpenCodeTextGeneration(DEFAULT_OPENCODE_SETTINGS, (textGeneration) =>
+      Effect.gen(function* () {
+        runtimeMock.state.promptResult = {
+          data: {
+            parts: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  tasks: [
+                    { id: "1", title: "Add validation to calculateTotal", dependsOn: [] },
+                    { id: "2", title: "Add a formatCurrency helper", dependsOn: [] },
+                    { id: "3", title: "Document the validation rules", dependsOn: ["1"] },
+                  ],
+                }),
+              },
+            ],
+          },
+        };
+
+        const plan = yield* textGeneration.generateSwarmPlan({
+          cwd: process.cwd(),
+          message: "Harden the cart module and document it.",
+          modelSelection: DEFAULT_TEST_MODEL_SELECTION,
+        });
+
+        // The ordering edge is the whole point of a swarm: without it every
+        // task would launch at once and the dependent one would race.
+        expect(plan.tasks).toEqual([
+          { id: "1", title: "Add validation to calculateTotal", dependsOn: [] },
+          { id: "2", title: "Add a formatCurrency helper", dependsOn: [] },
+          { id: "3", title: "Document the validation rules", dependsOn: ["1"] },
+        ]);
+      }),
+    ),
+  );
+
+  it.effect("degrades to a single task when the plan has nothing usable", () =>
+    withOpenCodeTextGeneration(DEFAULT_OPENCODE_SETTINGS, (textGeneration) =>
+      Effect.gen(function* () {
+        runtimeMock.state.promptResult = {
+          data: {
+            parts: [
+              {
+                type: "text",
+                text: JSON.stringify({ tasks: [{ id: "1", title: "   ", dependsOn: [] }] }),
+              },
+            ],
+          },
+        };
+
+        const plan = yield* textGeneration.generateSwarmPlan({
+          cwd: process.cwd(),
+          message: "Do the thing.",
+          modelSelection: DEFAULT_TEST_MODEL_SELECTION,
+        });
+
+        // Running the original prompt beats refusing to run anything.
+        expect(plan.tasks).toEqual([{ id: "1", title: "Do the thing.", dependsOn: [] }]);
+      }),
+    ),
+  );
+
   it.effect("excludes generic files from thread title generation", () =>
     withOpenCodeTextGeneration(DEFAULT_OPENCODE_SETTINGS, (textGeneration) =>
       Effect.gen(function* () {

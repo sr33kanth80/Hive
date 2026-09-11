@@ -97,12 +97,35 @@ export interface SwarmPlanGenerationResult {
 }
 
 /**
- * Providers that cannot plan return the prompt unchanged as one task. Swarm
- * mode then behaves exactly like a normal thread rather than failing, which is
- * the honest answer for a driver with no structured-output support.
+ * Drivers with no planner yet return the prompt unchanged as one task. Swarm
+ * mode then behaves exactly like a normal thread rather than failing.
  */
 export function singleTaskSwarmPlan(message: string): SwarmPlanGenerationResult {
   return { tasks: [{ id: "1", title: message, dependsOn: [] }] };
+}
+
+/**
+ * Clean up what a model returned. Shared so every driver treats a ragged plan
+ * the same way: blank titles dropped, ids and dependencies trimmed, and a plan
+ * with nothing usable left in it degraded to a single task rather than
+ * silently doing nothing.
+ */
+export function normalizeSwarmPlan(
+  message: string,
+  tasks: ReadonlyArray<{
+    readonly id: string;
+    readonly title: string;
+    readonly dependsOn: ReadonlyArray<string>;
+  }>,
+): SwarmPlanGenerationResult {
+  const cleaned = tasks
+    .filter((task) => task.title.trim().length > 0)
+    .map((task) => ({
+      id: task.id.trim(),
+      title: task.title.trim(),
+      dependsOn: task.dependsOn.map((value) => value.trim()).filter((value) => value.length > 0),
+    }));
+  return cleaned.length === 0 ? singleTaskSwarmPlan(message) : { tasks: cleaned };
 }
 
 /**
