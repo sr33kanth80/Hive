@@ -18,6 +18,7 @@ const RIGHT_PANEL_KINDS = [
   "diff",
   "files",
   "file",
+  "follow",
   "preview",
   "terminal",
   "pull-request",
@@ -38,6 +39,12 @@ export type RightPanelSurface =
     }
   | { id: "diff"; kind: "diff" }
   | { id: "files"; kind: "files" }
+  /**
+   * Follows whichever file the thread's agent is editing, rather than a file
+   * the reader picked. Singleton: following two files at once is just the file
+   * explorer, and the point of this surface is that it chooses for you.
+   */
+  | { id: "follow"; kind: "follow" }
   | {
       id: `file:${string}` | `attachment:${string}`;
       kind: "file";
@@ -151,6 +158,8 @@ const singletonSurface = (
       return { id: "diff", kind };
     case "files":
       return { id: "files", kind };
+    case "follow":
+      return { id: "follow", kind };
     case "agents":
       return { id: "agents", kind };
   }
@@ -664,6 +673,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             const surfaces = current.surfaces.filter(
               (surface) =>
                 surface.kind !== "files" &&
+                surface.kind !== "follow" &&
                 (surface.kind !== "file" || surface.attachment !== undefined),
             );
             if (surfaces.length === current.surfaces.length) return current;

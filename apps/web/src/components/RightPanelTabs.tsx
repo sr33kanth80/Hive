@@ -11,6 +11,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Eye,
   FileDiff,
   Files,
   GitPullRequest,
@@ -103,6 +104,7 @@ interface RightPanelTabsProps {
   onAddTerminal: () => void;
   onAddDiff: () => void;
   onAddFiles: () => void;
+  onAddFollow: () => void;
   onAddPullRequest: () => void;
   onAddAgents: () => void;
   browserAvailable: boolean;
@@ -137,6 +139,7 @@ const SURFACE_DISABLED_REASONS = {
   browser: "Browser previews are only available in the T3 Code desktop app.",
   terminal: "Terminal surfaces are only available from a project thread.",
   files: "Files are only available when a project is open.",
+  follow: "Watching is only available when a project is open.",
   diff: "Diff is only available for server threads in Git repositories.",
   pullRequest: "This thread's branch has no pull request yet.",
   agents: "Agents are only available from a thread.",
@@ -159,6 +162,7 @@ const SURFACE_UNAVAILABLE_HINTS = {
   browser: "Only available in the desktop app.",
   terminal: "Available when a project is open.",
   files: "Available when a project is open.",
+  follow: "Available when a project is open.",
   diff: "Available for Git repositories.",
   pullRequest: "No pull request on this branch yet.",
   agents: "Available from a thread.",
@@ -297,6 +301,7 @@ function RightPanelEmptyState(props: {
   onAddTerminal: () => void;
   onAddDiff: () => void;
   onAddFiles: () => void;
+  onAddFollow: () => void;
   onAddPullRequest: () => void;
   onAddAgents: () => void;
   browserAvailable: boolean;
@@ -339,6 +344,17 @@ function RightPanelEmptyState(props: {
       available: props.filesAvailable,
       disabledReason: SURFACE_UNAVAILABLE_HINTS.files,
       onClick: props.onAddFiles,
+      badgeCount: 0,
+    },
+    {
+      label: "Watch",
+      description: "Follow the file the agent is editing.",
+      icon: Eye,
+      shortcut: "W",
+      // Same requirement as Files: somewhere to read the file from.
+      available: props.filesAvailable,
+      disabledReason: SURFACE_UNAVAILABLE_HINTS.follow,
+      onClick: props.onAddFollow,
       badgeCount: 0,
     },
     {
@@ -591,6 +607,8 @@ function surfaceTitle(
       return "Diff";
     case "files":
       return "Files";
+    case "follow":
+      return "Watching";
     case "file":
       return surface.relativePath.slice(
         Math.max(surface.relativePath.lastIndexOf("/"), surface.relativePath.lastIndexOf("\\")) + 1,
@@ -664,6 +682,8 @@ function SurfaceIcon({
       return <FileDiff className="size-3 shrink-0" />;
     case "files":
       return <Files className="size-3 shrink-0" />;
+    case "follow":
+      return <Eye className="size-3 shrink-0" />;
     case "file":
       return (
         <PierreEntryIcon
@@ -797,6 +817,14 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       available: props.diffAvailable,
       disabledReason: SURFACE_DISABLED_REASONS.diff,
       onClick: props.onAddDiff,
+    },
+    {
+      label: "Watch",
+      icon: Eye,
+      shortcut: "W",
+      available: props.filesAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.follow,
+      onClick: props.onAddFollow,
     },
     {
       label: "Pull request",
@@ -1249,6 +1277,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddTerminal={props.onAddTerminal}
             onAddDiff={props.onAddDiff}
             onAddFiles={props.onAddFiles}
+            onAddFollow={props.onAddFollow}
             onAddPullRequest={props.onAddPullRequest}
             onAddAgents={props.onAddAgents}
             browserAvailable={props.browserAvailable}

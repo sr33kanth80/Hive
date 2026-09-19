@@ -95,6 +95,13 @@ interface FilePreviewPanelProps {
   onPendingChange: (relativePath: string, pending: boolean) => void;
   selectedFilePending: boolean;
   workspaceMutationId: string | null;
+  /**
+   * Forces the viewer read-only on top of its own rules. Set while an agent is
+   * writing the file: two writers on one file is the case the editor has no
+   * answer for, and a human edit landing mid-turn is also attributed to the
+   * agent in that turn's diff.
+   */
+  readOnly?: boolean;
 }
 
 const FILE_EXPLORER_STORAGE_KEY = "t3code.fileExplorerOpen";
@@ -968,6 +975,7 @@ export default function FilePreviewPanel({
   onPendingChange,
   selectedFilePending,
   workspaceMutationId,
+  readOnly = false,
 }: FilePreviewPanelProps) {
   const { resolvedTheme } = useTheme();
   const wordWrap = useClientSettings((settings) => settings.wordWrap);
@@ -989,6 +997,7 @@ export default function FilePreviewPanel({
   // A file outside the workspace (an absolute path) is shown, never edited.
   const isHostFile =
     attachment !== undefined || (relativePath !== null && isAbsolutePath(relativePath));
+  const isReadOnly = isHostFile || readOnly;
   const file = useProjectFileQuery(
     environmentId,
     cwd,
@@ -1277,10 +1286,10 @@ export default function FilePreviewPanel({
                 relativePath={relativePath}
                 threadRef={threadRef}
                 contents={file.data.contents}
-                readOnly={isHostFile}
+                readOnly={isReadOnly}
                 onPendingChange={onPendingChange}
               />
-            ) : file.data.truncated || isHostFile ? (
+            ) : file.data.truncated || isReadOnly ? (
               <DiffWorkerPoolProvider>
                 <Virtualizer
                   key={`${relativePath}:${resolvedTheme}:${file.data.byteLength}`}

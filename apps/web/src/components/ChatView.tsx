@@ -138,6 +138,7 @@ import {
   latestWorkspaceMutationId,
   useWorkspaceMutationRefresh,
 } from "../hooks/useWorkspaceMutationRefresh";
+import { latestAgentFileEdit } from "./files/agentFileEdit";
 import {
   buildPlanImplementationThreadTitle,
   buildPlanImplementationPrompt,
@@ -2566,6 +2567,10 @@ export default function ChatView(props: ChatViewProps) {
       ? null
       : JSON.stringify([activityId, latestCheckpointCompletedAt]);
   }, [latestCheckpointCompletedAt, threadActivities]);
+  const followedAgentEdit = useMemo(
+    () => latestAgentFileEdit(threadActivities),
+    [threadActivities],
+  );
   const activeContextWindow = useMemo(
     () => deriveLatestContextWindowSnapshot(threadActivities),
     [threadActivities],
@@ -3955,6 +3960,10 @@ export default function ChatView(props: ChatViewProps) {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "agents");
   }, [activeThreadRef]);
+  const addFollowSurface = useCallback(() => {
+    if (!activeThreadRef || !activeProject) return;
+    useRightPanelStore.getState().open(activeThreadRef, "follow");
+  }, [activeProject, activeThreadRef]);
   const openFileSurface = useCallback(
     (relativePath: string) => {
       if (!activeThreadRef || !activeProject) return;
@@ -7747,6 +7756,32 @@ export default function ChatView(props: ChatViewProps) {
         environmentId={activeThreadRef?.environmentId ?? null}
         threadId={activeThreadRef?.threadId ?? null}
       />
+    ) : renderedRightPanelSurface?.kind === "follow" && activeProject && activeWorkspaceRoot ? (
+      <Suspense fallback={null}>
+        <FilePreviewPanel
+          // Keyed on the workspace, not the followed path: remounting per edit
+          // would throw away scroll position every time the agent moves.
+          key={`${activeThread.environmentId}:${activeWorkspaceRoot}:follow`}
+          environmentId={activeThread.environmentId}
+          cwd={activeWorkspaceRoot}
+          projectName={activeProject.title}
+          threadRef={activeThreadRef}
+          composerDraftTarget={composerDraftTarget}
+          keybindings={keybindings}
+          availableEditors={availableEditors}
+          relativePath={followedAgentEdit?.path ?? null}
+          revealLine={null}
+          revealRequestId={0}
+          onOpenFile={openFileSurface}
+          onPendingChange={handleFilePendingChange}
+          selectedFilePending={false}
+          workspaceMutationId={workspaceMutationId}
+          // Locked while the agent writes. Unlocks when the turn settles, which
+          // is also when the checkpoint has captured the turn — editing before
+          // that attributes the human's change to the agent.
+          readOnly={isWorking}
+        />
+      </Suspense>
     ) : (renderedRightPanelSurface?.kind === "files" ||
         renderedRightPanelSurface?.kind === "file") &&
       ((activeProject && activeWorkspaceRoot) ||
@@ -8299,6 +8334,7 @@ export default function ChatView(props: ChatViewProps) {
           onAddTerminal={addTerminalSurface}
           onAddDiff={addDiffSurface}
           onAddFiles={addFilesSurface}
+          onAddFollow={addFollowSurface}
           onAddPullRequest={addPullRequestSurface}
           onAddAgents={addAgentsSurface}
           browserAvailable={isPreviewSupportedInRuntime()}
@@ -8349,6 +8385,7 @@ export default function ChatView(props: ChatViewProps) {
             onAddTerminal={addTerminalSurface}
             onAddDiff={addDiffSurface}
             onAddFiles={addFilesSurface}
+            onAddFollow={addFollowSurface}
             onAddPullRequest={addPullRequestSurface}
             onAddAgents={addAgentsSurface}
             browserAvailable={isPreviewSupportedInRuntime()}

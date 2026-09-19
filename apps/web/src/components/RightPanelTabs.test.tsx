@@ -119,6 +119,7 @@ function renderTabs(
       onAddPullRequest={() => undefined}
       onAddDiff={() => undefined}
       onAddFiles={() => undefined}
+      onAddFollow={() => undefined}
       onAddAgents={() => undefined}
       liveAgentCount={0}
       browserAvailable
