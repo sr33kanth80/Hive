@@ -353,6 +353,7 @@ export const WS_METHODS = {
   hiveSwarmsCreate: "hive.swarms.create",
   hiveSwarmsFromPrompt: "hive.swarms.fromPrompt",
   hiveSwarmsList: "hive.swarms.list",
+  hiveSwarmsSubscribe: "hive.swarms.subscribe",
 
   // Cloud environment methods
   cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
@@ -428,6 +429,13 @@ const WsHiveSwarmsFromPromptRpc = Rpc.make(WS_METHODS.hiveSwarmsFromPrompt, {
   payload: HiveSwarmFromPromptInput,
   success: HiveSwarmCreateResult,
   error: Schema.Union([HiveSwarmPlanInvalidError, EnvironmentAuthorizationError]),
+});
+
+const WsHiveSwarmsSubscribeRpc = Rpc.make(WS_METHODS.hiveSwarmsSubscribe, {
+  payload: HiveSwarmsListInput,
+  success: HiveSwarmsListResult,
+  error: EnvironmentAuthorizationError,
+  stream: true,
 });
 
 const WsHiveSwarmsListRpc = Rpc.make(WS_METHODS.hiveSwarmsList, {
@@ -1230,6 +1238,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsHiveSwarmsCreateRpc,
   WsHiveSwarmsFromPromptRpc,
   WsHiveSwarmsListRpc,
+  WsHiveSwarmsSubscribeRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,

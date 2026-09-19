@@ -8,7 +8,11 @@ import { WS_METHODS } from "@t3tools/contracts";
 import { Atom } from "effect/unstable/reactivity";
 
 import type { EnvironmentRegistry } from "../connection/registry.ts";
-import { createEnvironmentRpcCommand, createEnvironmentRpcQueryAtomFamily } from "./runtime.ts";
+import {
+  createEnvironmentRpcCommand,
+  createEnvironmentRpcQueryAtomFamily,
+  createEnvironmentRpcSubscriptionAtomFamily,
+} from "./runtime.ts";
 
 export function createHiveEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
@@ -26,14 +30,14 @@ export function createHiveEnvironmentAtoms<R, E>(
 
     /**
      * Swarms change when a task starts or finishes, which is frequent while one
-     * is running and never once it settles. A short stale window with a steady
-     * refresh keeps the view live without polling hard.
+     * is running and never once it settles. That last part is why this is a
+     * subscription rather than a poll: settling is the final thing a swarm does,
+     * so a poll interval is pure latency on the transition that matters most,
+     * with nothing afterwards to correct a stale view.
      */
-    swarms: createEnvironmentRpcQueryAtomFamily(runtime, {
+    swarms: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:hive:swarms",
-      tag: WS_METHODS.hiveSwarmsList,
-      staleTimeMs: 2_000,
-      refreshIntervalMs: 5_000,
+      tag: WS_METHODS.hiveSwarmsSubscribe,
     }),
 
     createSwarm: createEnvironmentRpcCommand(runtime, {

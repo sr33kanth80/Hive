@@ -10,6 +10,7 @@
 import type { OrchestrationEvent, ThreadId } from "@t3tools/contracts";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 import { SwarmRegistry } from "@t3tools/swarm/registry";
+import { swarmProgress } from "@t3tools/swarm/scheduler";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -71,6 +72,18 @@ export const make = Effect.gen(function* () {
         swarmId: found.swarm.id,
         finished: found.task.id,
         started: launched.map((entry) => entry.taskId),
+      });
+      return;
+    }
+
+    // Nothing started, so this task may have been the last one standing. The
+    // registry decides that when it records the outcome; re-reading the swarm
+    // is how we learn it happened.
+    const swarm = yield* registry.get(found.swarm.id);
+    if (swarm?.status === "settled") {
+      yield* Effect.logInfo("hive swarm settled", {
+        swarmId: swarm.id,
+        ...swarmProgress(swarm),
       });
     }
   });

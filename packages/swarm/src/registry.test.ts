@@ -1,10 +1,12 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import type { ModelSelection, ProjectId, ThreadId } from "@t3tools/contracts";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Stream from "effect/Stream";
 
-import { make } from "./registry.ts";
+import { make, type SwarmProjectChange } from "./registry.ts";
 import { loadSwarms, swarmFilePath } from "./store.ts";
 
 const PROJECT = "project-1" as ProjectId;
@@ -185,6 +187,128 @@ describe("SwarmRegistry", () => {
       assert.strictEqual(c?.status, "blocked");
       // b was independent and is unaffected.
       assert.strictEqual(swarm?.tasks.find((task) => task.id === "b")?.status, "pending");
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  );
+
+  it.effect("settles only once the last task has finished", () =>
+    Effect.gen(function* () {
+      const { registry } = yield* makeRegistryInTempDir;
+      yield* registry.create(fanOutPlan);
+      assert.strictEqual((yield* registry.get("swarm-1"))?.status, "running");
+
+      yield* registry.markRunning({
+        swarmId: "swarm-1",
+        taskId: "a",
+        threadId: "thread-a" as ThreadId,
+      });
+      yield* registry.markFinished({ swarmId: "swarm-1", taskId: "a", status: "done" });
+      yield* registry.markRunning({
+        swarmId: "swarm-1",
+        taskId: "b",
+        threadId: "thread-b" as ThreadId,
+      });
+      yield* registry.markFinished({ swarmId: "swarm-1", taskId: "b", status: "done" });
+
+      // c is unblocked but has not started. Settling here would be the
+      // dangerous case: callers treat settled as "no agent will write again".
+      assert.strictEqual((yield* registry.get("swarm-1"))?.status, "running");
+
+      yield* registry.markRunning({
+        swarmId: "swarm-1",
+        taskId: "c",
+        threadId: "thread-c" as ThreadId,
+      });
+      yield* registry.markFinished({ swarmId: "swarm-1", taskId: "c", status: "done" });
+
+      assert.strictEqual((yield* registry.get("swarm-1"))?.status, "settled");
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  );
+
+  it.effect("settles when failures leave nothing that can still run", () =>
+    Effect.gen(function* () {
+      const { registry } = yield* makeRegistryInTempDir;
+      yield* registry.create(fanOutPlan);
+
+      yield* registry.markLaunchFailed({
+        swarmId: "swarm-1",
+        taskId: "a",
+        detail: "worktree add failed",
+      });
+      // b never depended on a, so there is still work to do.
+      assert.strictEqual((yield* registry.get("swarm-1"))?.status, "running");
+
+      yield* registry.markRunning({
+        swarmId: "swarm-1",
+        taskId: "b",
+        threadId: "thread-b" as ThreadId,
+      });
+      yield* registry.markFinished({ swarmId: "swarm-1", taskId: "b", status: "failed" });
+
+      const swarm = yield* registry.get("swarm-1");
+      // A swarm that ends badly still ends: settled means nothing more will run.
+      assert.strictEqual(swarm?.status, "settled");
+      assert.strictEqual(swarm?.tasks.find((task) => task.id === "c")?.status, "blocked");
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  );
+
+  it.effect("derives settled for a swarm the store still records as running", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const stateDir = yield* fs.makeTempDirectoryScoped({ prefix: "hive-swarm-test-" });
+      const filePath = yield* swarmFilePath(stateDir);
+
+      const first = yield* make(filePath);
+      yield* first.create(fanOutPlan);
+      for (const taskId of ["a", "b", "c"] as const) {
+        yield* first.markRunning({
+          swarmId: "swarm-1",
+          taskId,
+          threadId: `thread-${taskId}` as ThreadId,
+        });
+        yield* first.markFinished({ swarmId: "swarm-1", taskId, status: "done" });
+      }
+
+      // Settling is never written down — it is a function of the task statuses.
+      const stored = yield* loadSwarms(filePath);
+      assert.strictEqual(stored.swarms[0]?.status, "running");
+
+      // So a swarm that finished under an older server, or before this rule
+      // existed, still reads correctly instead of claiming to run forever.
+      const second = yield* make(filePath);
+      assert.strictEqual((yield* second.get("swarm-1"))?.status, "settled");
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  );
+
+  it.effect("pushes the project's swarms when one settles", () =>
+    Effect.gen(function* () {
+      const { registry } = yield* makeRegistryInTempDir;
+      yield* registry.create(fanOutPlan);
+
+      const settled = yield* Deferred.make<SwarmProjectChange>();
+      yield* Effect.forkScoped(
+        Stream.runForEach(registry.changes, (change) =>
+          change.swarms.some((swarm) => swarm.status === "settled")
+            ? Deferred.succeed(settled, change).pipe(Effect.ignore)
+            : Effect.void,
+        ),
+        { startImmediately: true },
+      );
+
+      for (const taskId of ["a", "b", "c"] as const) {
+        yield* registry.markRunning({
+          swarmId: "swarm-1",
+          taskId,
+          threadId: `thread-${taskId}` as ThreadId,
+        });
+        yield* registry.markFinished({ swarmId: "swarm-1", taskId, status: "done" });
+      }
+
+      // Without the push a subscriber only learns this on its next poll, and
+      // settling is the last thing a swarm does — there is no later event to
+      // correct a missed one.
+      const change = yield* Deferred.await(settled);
+      assert.strictEqual(change.projectId, PROJECT);
+      assert.strictEqual(change.swarms[0]?.status, "settled");
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   );
 

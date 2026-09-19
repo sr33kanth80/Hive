@@ -11,8 +11,10 @@ import * as Effect from "effect/Effect";
 import type * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import type * as Path from "effect/Path";
+import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Semaphore from "effect/Semaphore";
+import * as Stream from "effect/Stream";
 
 import type {
   Swarm,
@@ -22,7 +24,7 @@ import type {
   SwarmTaskId,
   SwarmTaskStatus,
 } from "./schema.ts";
-import { runnableTasks, unreachableTasks, validateTaskGraph } from "./scheduler.ts";
+import { isSettled, runnableTasks, unreachableTasks, validateTaskGraph } from "./scheduler.ts";
 import { loadSwarms, saveSwarms } from "./store.ts";
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
@@ -42,6 +44,16 @@ export interface CreateSwarmInput {
   }>;
   /** Provider and model every task runs on, pinned for the swarm's lifetime. */
   readonly modelSelection?: ModelSelection;
+}
+
+/**
+ * Every swarm in one project, as it stands after a change. The whole project's
+ * set rather than the single swarm that moved, so a subscriber renders from one
+ * value instead of maintaining its own merge of patches.
+ */
+export interface SwarmProjectChange {
+  readonly projectId: ProjectId;
+  readonly swarms: ReadonlyArray<Swarm>;
 }
 
 export class SwarmRegistry extends Context.Service<
@@ -81,6 +93,13 @@ export class SwarmRegistry extends Context.Service<
       readonly taskId: SwarmTaskId;
       readonly detail: string;
     }) => Effect.Effect<void>;
+    /**
+     * Swarm state pushed as it changes, one event per project touched. Polling
+     * `listForProject` means a swarm can finish and sit unnoticed until the next
+     * interval; anything waiting on a swarm settling needs to hear about it when
+     * it happens rather than up to a poll later.
+     */
+    readonly changes: Stream.Stream<SwarmProjectChange>;
   }
 >()("@t3tools/swarm/registry/SwarmRegistry") {}
 
@@ -90,6 +109,7 @@ export const make = (filePath: string) =>
     const initial = yield* loadSwarms(filePath);
     const state = yield* Ref.make<SwarmStoreFile>(initial);
     const lock = yield* Semaphore.make(1);
+    const changesPubSub = yield* PubSub.unbounded<SwarmProjectChange>();
 
     const persist = Effect.fn("SwarmRegistry.persist")(function* () {
       const current = yield* Ref.get(state);
@@ -104,12 +124,47 @@ export const make = (filePath: string) =>
       );
     });
 
-    const mutate = (update: (swarms: ReadonlyArray<Swarm>, at: string) => ReadonlyArray<Swarm>) =>
+    /**
+     * Settling is a function of the task statuses, so it is computed on the way
+     * out rather than written when a task ends. Storing it left any swarm that
+     * reached its terminal state under an older server — or before this rule
+     * existed — claiming to be running forever, with nothing left to happen that
+     * would correct it.
+     */
+    const withDerivedStatus = (swarm: Swarm): Swarm =>
+      swarm.status === "running" && isSettled(swarm)
+        ? { ...swarm, status: "settled" as const }
+        : swarm;
+
+    /** Every swarm as callers should see it. The only read path. */
+    const all = Effect.map(Ref.get(state), (store) => store.swarms.map(withDerivedStatus));
+
+    /**
+     * Announce the project the given swarm belongs to. Called after the state
+     * has been written, so a subscriber that reacts immediately reads the same
+     * value a fresh `listForProject` would return.
+     */
+    const publishSwarm = (swarmId: SwarmId) =>
+      Effect.gen(function* () {
+        const swarms = yield* all;
+        const changed = swarms.find((swarm) => swarm.id === swarmId);
+        if (changed === undefined) return;
+        yield* PubSub.publish(changesPubSub, {
+          projectId: changed.projectId,
+          swarms: swarms.filter((swarm) => swarm.projectId === changed.projectId),
+        });
+      });
+
+    const mutate = (
+      swarmId: SwarmId,
+      update: (swarms: ReadonlyArray<Swarm>, at: string) => ReadonlyArray<Swarm>,
+    ) =>
       lock.withPermits(1)(
         Effect.gen(function* () {
           const at = yield* nowIso;
           yield* Ref.update(state, (store) => ({ ...store, swarms: update(store.swarms, at) }));
           yield* persist();
+          yield* publishSwarm(swarmId);
         }),
       );
 
@@ -129,6 +184,21 @@ export const make = (filePath: string) =>
       ...swarm,
       tasks: swarm.tasks.map((task) => (task.id === taskId ? apply(task) : task)),
     });
+
+    /**
+     * A task ending strands everything downstream of it. Recording that in the
+     * same mutation is what stops a dead swarm from looking like it is still
+     * making progress. Shared by both terminal transitions.
+     */
+    const blockStrandedTasks = (swarm: Swarm): Swarm => {
+      const stranded = new Set(unreachableTasks(swarm).map((task) => task.id));
+      return {
+        ...swarm,
+        tasks: swarm.tasks.map((task) =>
+          stranded.has(task.id) ? { ...task, status: "blocked" as const } : task,
+        ),
+      };
+    };
 
     const create: SwarmRegistry["Service"]["create"] = (input) =>
       Effect.gen(function* () {
@@ -164,12 +234,11 @@ export const make = (filePath: string) =>
           Effect.gen(function* () {
             yield* Ref.update(state, (store) => ({ ...store, swarms: [...store.swarms, swarm] }));
             yield* persist();
+            yield* publishSwarm(swarm.id);
           }),
         );
         return swarm;
       });
-
-    const all = Effect.map(Ref.get(state), (store) => store.swarms);
 
     const get: SwarmRegistry["Service"]["get"] = (id) =>
       Effect.map(all, (swarms) => swarms.find((swarm) => swarm.id === id) ?? null);
@@ -178,7 +247,7 @@ export const make = (filePath: string) =>
       Effect.map(all, (swarms) => swarms.filter((swarm) => swarm.projectId === projectId));
 
     const markRunning: SwarmRegistry["Service"]["markRunning"] = (input) =>
-      mutate((swarms, at) =>
+      mutate(input.swarmId, (swarms, at) =>
         updateSwarm(swarms, input.swarmId, at, (swarm) =>
           updateTask(swarm, input.taskId, (task) => ({
             ...task,
@@ -189,25 +258,18 @@ export const make = (filePath: string) =>
       );
 
     const markFinished: SwarmRegistry["Service"]["markFinished"] = (input) =>
-      mutate((swarms, at) =>
+      mutate(input.swarmId, (swarms, at) =>
         updateSwarm(swarms, input.swarmId, at, (swarm) => {
           const detail = input.detail?.trim();
-          const settled = updateTask(swarm, input.taskId, (task) => ({
-            ...task,
-            status: input.status,
-            // A blank reason must not overwrite one already recorded, and an
-            // empty string is not a valid TrimmedNonEmptyString.
-            ...(detail ? { detail } : {}),
-          }));
-          // A failure strands the work downstream of it. Marking that now is
-          // what stops a dead swarm from looking like it is still progressing.
-          const stranded = new Set(unreachableTasks(settled).map((task) => task.id));
-          return {
-            ...settled,
-            tasks: settled.tasks.map((task) =>
-              stranded.has(task.id) ? { ...task, status: "blocked" as const } : task,
-            ),
-          };
+          return blockStrandedTasks(
+            updateTask(swarm, input.taskId, (task) => ({
+              ...task,
+              status: input.status,
+              // A blank reason must not overwrite one already recorded, and an
+              // empty string is not a valid TrimmedNonEmptyString.
+              ...(detail ? { detail } : {}),
+            })),
+          );
         }),
       );
 
@@ -224,21 +286,16 @@ export const make = (filePath: string) =>
       Effect.map(get(id), (swarm) => (swarm === null ? [] : runnableTasks(swarm)));
 
     const markLaunchFailed: SwarmRegistry["Service"]["markLaunchFailed"] = (input) =>
-      mutate((swarms, at) =>
+      mutate(input.swarmId, (swarms, at) =>
         updateSwarm(swarms, input.swarmId, at, (swarm) => {
           const detail = input.detail.trim();
-          const settled = updateTask(swarm, input.taskId, (task) => ({
-            ...task,
-            status: "failed" as const,
-            ...(detail ? { detail } : {}),
-          }));
-          const stranded = new Set(unreachableTasks(settled).map((task) => task.id));
-          return {
-            ...settled,
-            tasks: settled.tasks.map((task) =>
-              stranded.has(task.id) ? { ...task, status: "blocked" as const } : task,
-            ),
-          };
+          return blockStrandedTasks(
+            updateTask(swarm, input.taskId, (task) => ({
+              ...task,
+              status: "failed" as const,
+              ...(detail ? { detail } : {}),
+            })),
+          );
         }),
       );
 
@@ -252,6 +309,7 @@ export const make = (filePath: string) =>
       findByThread,
       claimRunnable,
       markLaunchFailed,
+      changes: Stream.fromPubSub(changesPubSub),
     } satisfies SwarmRegistry["Service"];
   });
 

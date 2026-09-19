@@ -1786,6 +1786,12 @@ const makeWsRpcLayer = (
             swarmService.listForProject({ projectId: input.projectId }),
             { "rpc.aggregate": "hive" },
           ),
+        [WS_METHODS.hiveSwarmsSubscribe]: (input) =>
+          observeRpcStreamEffect(
+            WS_METHODS.hiveSwarmsSubscribe,
+            swarmService.subscribeForProject({ projectId: input.projectId }),
+            { "rpc.aggregate": "hive" },
+          ),
         [WS_METHODS.serverProbe]: (_input) =>
           observeRpcEffect(WS_METHODS.serverProbe, Effect.succeed({}), {
             "rpc.aggregate": "server",

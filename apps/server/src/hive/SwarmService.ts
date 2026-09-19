@@ -17,11 +17,14 @@ import {
   type ModelSelection,
   type ProjectId,
 } from "@t3tools/contracts";
-import { SwarmRegistry } from "@t3tools/swarm/registry";
+import { SwarmRegistry, type SwarmProjectChange } from "@t3tools/swarm/registry";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Queue from "effect/Queue";
+import type * as Scope from "effect/Scope";
+import * as Stream from "effect/Stream";
 
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
@@ -36,6 +39,14 @@ export class SwarmService extends Context.Service<
     readonly listForProject: (input: {
       readonly projectId: ProjectId;
     }) => Effect.Effect<HiveSwarmsListResult>;
+    /**
+     * The project's swarms now, then again on every change. Replaces polling
+     * `listForProject`, which could leave a finished swarm looking busy for a
+     * whole interval.
+     */
+    readonly subscribeForProject: (input: {
+      readonly projectId: ProjectId;
+    }) => Effect.Effect<Stream.Stream<HiveSwarmsListResult>, never, Scope.Scope>;
     /**
      * Swarm mode from the composer: plan the prompt, then run it. A prompt the
      * planner declines to split becomes a single task, which behaves exactly
@@ -144,7 +155,34 @@ export const make = Effect.gen(function* () {
   const listForProject: SwarmService["Service"]["listForProject"] = (input) =>
     Effect.map(registry.listForProject(input.projectId), (swarms) => ({ swarms }));
 
-  return { create, createFromPrompt, listForProject } satisfies SwarmService["Service"];
+  const subscribeForProject: SwarmService["Service"]["subscribeForProject"] = (input) =>
+    Effect.gen(function* () {
+      // Start buffering before reading the snapshot, so a change landing between
+      // the two is queued rather than dropped. Dropping one is not a transient
+      // glitch: the next change may never come, and the last thing a swarm does
+      // is settle, so the subscriber would sit on "running" forever.
+      const live = yield* Queue.unbounded<SwarmProjectChange>();
+      yield* Effect.forkScoped(
+        registry.changes.pipe(Stream.runForEach((change) => Queue.offer(live, change))),
+        { startImmediately: true },
+      );
+
+      const snapshot = yield* listForProject(input);
+      return Stream.concat(
+        Stream.make(snapshot),
+        Stream.fromQueue(live).pipe(
+          Stream.filter((change) => change.projectId === input.projectId),
+          Stream.map((change) => ({ swarms: change.swarms })),
+        ),
+      );
+    });
+
+  return {
+    create,
+    createFromPrompt,
+    listForProject,
+    subscribeForProject,
+  } satisfies SwarmService["Service"];
 });
 
 export const layer = Layer.effect(SwarmService, make);
