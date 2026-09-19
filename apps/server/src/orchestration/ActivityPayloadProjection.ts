@@ -54,6 +54,9 @@ function collectChangedFiles(
 
   pushChangedFile(target, seen, record.path);
   pushChangedFile(target, seen, record.filePath);
+  // Claude's Edit/Write tools name the key file_path, and ACP agents put paths
+  // under locations/rawInput rather than the camelCase keys other providers use.
+  pushChangedFile(target, seen, record.file_path);
   pushChangedFile(target, seen, record.relativePath);
   pushChangedFile(target, seen, record.filename);
   pushChangedFile(target, seen, record.newPath);
@@ -63,10 +66,12 @@ function collectChangedFiles(
     "item",
     "result",
     "input",
+    "rawInput",
     "data",
     "changes",
     "files",
     "edits",
+    "locations",
     "patch",
     "patches",
     "operations",

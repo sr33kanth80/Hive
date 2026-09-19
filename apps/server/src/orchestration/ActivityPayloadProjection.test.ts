@@ -195,6 +195,41 @@ describe("projectActivityPayload", () => {
     expect(textRead.payload).not.toMatchObject({ data: { imagePath: expect.anything() } });
   });
 
+  it("recovers changed file paths from Claude and ACP tool shapes", () => {
+    const claude = projectActivityPayload(
+      activity({
+        itemType: "file_change",
+        data: {
+          toolName: "Edit",
+          input: {
+            file_path: "/workspace/src/auth.ts",
+            old_string: "const attempts = 1;",
+            new_string: "const attempts = 3;",
+          },
+        },
+      }),
+    );
+    const acp = projectActivityPayload(
+      activity({
+        itemType: "file_change",
+        data: {
+          toolCallId: "acp-call-1",
+          kind: "edit",
+          locations: [{ path: "/workspace/src/router.ts", line: 42 }],
+          rawInput: { path: "/workspace/src/router.ts" },
+        },
+      }),
+    );
+
+    const claudeData = (claude.payload as Record<string, unknown>).data as Record<string, unknown>;
+    const acpData = (acp.payload as Record<string, unknown>).data as Record<string, unknown>;
+    expect(claudeData.files).toEqual([{ path: "/workspace/src/auth.ts" }]);
+    // locations and rawInput name the same file; it must not be reported twice.
+    expect(acpData.files).toEqual([{ path: "/workspace/src/router.ts" }]);
+    // Paths survive, edit content still does not.
+    expect(JSON.stringify(claude.payload)).not.toContain("const attempts = 3;");
+  });
+
   it("slims Codex-shaped mcp_tool_call items to rendered fields plus a result summary", () => {
     const projected = projectActivityPayload(
       activity({
